@@ -180,10 +180,15 @@ struct RaceTimingPanel: View {
                             .fontWeight(.semibold)
                             .frame(width: 100, alignment: .leading)
 
-                        Text("Position")
+                        Text("Status")
                             .font(.caption)
                             .fontWeight(.semibold)
-                            .frame(width: 70, alignment: .leading)
+                            .frame(width: 120, alignment: .leading)
+
+                        Text("Pos")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .frame(width: 40, alignment: .leading)
 
                         Spacer()
                     }
@@ -207,26 +212,77 @@ struct RaceTimingPanel: View {
                                         .font(.system(size: 14))
                                         .frame(width: 120, alignment: .leading)
 
-                                    if let event = finishEvent {
+                                    if let event = finishEvent, event.status == .finished {
                                         Text(formatRaceTime(event.tRace))
                                             .font(.system(size: 14, design: .monospaced))
                                             .frame(width: 100, alignment: .leading)
+                                    } else {
+                                        Text("--:--")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 100, alignment: .leading)
+                                    }
 
+                                    // Status dropdown
+                                    Menu {
+                                        Button("Registered") {
+                                            timingModel.recordLaneStatus(teamName, status: .registered)
+                                        }
+
+                                        Button("Finished") {
+                                            // Do nothing - times are set via timeline
+                                        }
+                                        .disabled(true)
+
+                                        Divider()
+
+                                        Button("DNS - Did Not Start") {
+                                            timingModel.recordLaneStatus(teamName, status: .dns)
+                                        }
+
+                                        Button("DNF - Did Not Finish") {
+                                            timingModel.recordLaneStatus(teamName, status: .dnf)
+                                        }
+
+                                        Button("DSQ - Disqualified") {
+                                            timingModel.recordLaneStatus(teamName, status: .dsq)
+                                        }
+
+                                        Divider()
+
+                                        Button("Clear") {
+                                            timingModel.finishEvents.removeAll { $0.label == teamName }
+                                            timingModel.sessionData?.finishEvents.removeAll { $0.label == teamName }
+                                            timingModel.saveCurrentSession()
+                                        }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            if let event = finishEvent {
+                                                Text(event.status.rawValue)
+                                                    .foregroundColor(textColorForStatus(event.status))
+                                            } else {
+                                                Text("Registered")
+                                                    .foregroundColor(textColorForStatus(.registered))
+                                            }
+                                            Image(systemName: "chevron.down")
+                                                .font(.caption2)
+                                        }
+                                        .frame(width: 110, alignment: .leading)
+                                    }
+                                    .menuStyle(.borderlessButton)
+                                    .frame(width: 120, alignment: .leading)
+
+                                    if let event = finishEvent, event.status == .finished {
                                         Text(position != nil ? "\(position!)" : "-")
                                             .font(.system(size: 14))
                                             .fontWeight(position == 1 ? .bold : .regular)
                                             .foregroundColor(position == 1 ? .yellow : .primary)
-                                            .frame(width: 70, alignment: .leading)
+                                            .frame(width: 40, alignment: .leading)
                                     } else {
                                         Text("-")
                                             .font(.system(size: 14))
                                             .foregroundColor(.secondary)
-                                            .frame(width: 100, alignment: .leading)
-
-                                        Text("-")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(.secondary)
-                                            .frame(width: 70, alignment: .leading)
+                                            .frame(width: 40, alignment: .leading)
                                     }
 
                                     Spacer()
@@ -443,11 +499,28 @@ struct RaceTimingPanel: View {
     }
 
     private func calculatePosition(for event: FinishEvent, in events: [FinishEvent]) -> Int? {
-        let sortedEvents = events.sorted { $0.tRace < $1.tRace }
+        // Only calculate position for finished events
+        let finishedEvents = events.filter { $0.status == .finished }
+        let sortedEvents = finishedEvents.sorted { $0.tRace < $1.tRace }
         if let index = sortedEvents.firstIndex(where: { $0.id == event.id }) {
             return index + 1
         }
         return nil
+    }
+
+    private func textColorForStatus(_ status: LaneStatus) -> Color {
+        switch status {
+        case .registered:
+            return .blue
+        case .finished:
+            return .green
+        case .dns:
+            return .gray
+        case .dnf:
+            return .orange
+        case .dsq:
+            return .red
+        }
     }
 }
 

@@ -90,13 +90,16 @@ struct RaceTimelineView: View {
 
                     // Finish markers
                     GeometryReader { geometry in
-                        ForEach(timingModel.finishEvents) { event in
+                        ForEach(timingModel.finishEvents.filter { $0.status == .finished }) { event in
                             ZStack(alignment: .topLeading) {
+                                // Color for finished events (green)
+                                let markerColor = Color.green
+
                                 // Vertical line - this is the exact position
                                 Rectangle()
-                                    .fill(Color.green)
+                                    .fill(markerColor)
                                     .frame(width: 2, height: 40)
-                                    .shadow(color: Color.green.opacity(0.3), radius: 2, x: 0, y: 0)
+                                    .shadow(color: markerColor.opacity(0.3), radius: 2, x: 0, y: 0)
 
                                 // Triangle pointer at top
                                 Path { path in
@@ -105,11 +108,11 @@ struct RaceTimelineView: View {
                                     path.addLine(to: CGPoint(x: 6, y: -6))
                                     path.closeSubpath()
                                 }
-                                .fill(Color.green)
+                                .fill(markerColor)
                                 .frame(width: 10, height: 6)
                                 .offset(x: -4, y: -6)
 
-                                // Label below the line
+                                // Lane label below
                                 Text(event.label)
                                     .font(.system(size: 10, weight: .medium, design: .rounded))
                                     .foregroundColor(.black)
@@ -117,7 +120,7 @@ struct RaceTimelineView: View {
                                     .padding(.vertical, 2)
                                     .background(
                                         RoundedRectangle(cornerRadius: 4)
-                                            .fill(Color.green)
+                                            .fill(markerColor)
                                     )
                                     .offset(x: -20, y: 44)
                             }
@@ -214,6 +217,7 @@ struct RaceTimelineView: View {
             }
             .padding(.vertical, 5)
 
+
             // Quick Actions
             HStack(spacing: 20) {
                 Button("Add Finish Here") {
@@ -237,7 +241,7 @@ struct RaceTimelineView: View {
 
                 if !timingModel.finishEvents.isEmpty {
                     Menu("Jump to marker") {
-                        ForEach(timingModel.finishEvents) { event in
+                        ForEach(timingModel.finishEvents.filter { $0.status == .finished }) { event in
                             Button("\(event.label): \(formatTime(event.tRace))") {
                                 currentRaceTime = event.tRace
                                 seekToRaceTime()
@@ -390,6 +394,36 @@ struct RaceTimelineView: View {
         let secs = Int(seconds) % 60
         let millis = Int((seconds.truncatingRemainder(dividingBy: 1)) * 1000)
         return String(format: "%02d:%02d.%03d", minutes, secs, millis)
+    }
+
+    private func markerColorForStatus(_ status: LaneStatus) -> Color {
+        switch status {
+        case .registered:
+            return .blue
+        case .finished:
+            return .green
+        case .dns:
+            return .gray
+        case .dnf:
+            return .orange
+        case .dsq:
+            return .red
+        }
+    }
+
+    private func textColorForStatus(_ status: LaneStatus) -> Color {
+        switch status {
+        case .registered:
+            return .blue
+        case .finished:
+            return .green
+        case .dns:
+            return .gray
+        case .dnf:
+            return .orange
+        case .dsq:
+            return .red
+        }
     }
 
     private func calculateMarkerPosition(event: FinishEvent, geometry: GeometryProxy) -> CGFloat {

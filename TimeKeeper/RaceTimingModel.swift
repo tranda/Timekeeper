@@ -4,17 +4,27 @@ import Combine
 // Configuration constant - change this to adjust the number of lanes
 let MAX_LANES = 4
 
+enum LaneStatus: String, Codable {
+    case registered = "Registered"  // Default status before race
+    case finished = "Finished"
+    case dns = "DNS"  // Did Not Start
+    case dnf = "DNF"  // Did Not Finish
+    case dsq = "DSQ"  // Disqualified
+}
+
 struct FinishEvent: Identifiable, Codable {
     let id: String
     let tRace: Double  // Time in race (from race start)
     let tVideo: Double? // Time in video (from video start) - optional for backwards compatibility
     let label: String
+    let status: LaneStatus
 
-    init(tRace: Double, tVideo: Double? = nil, label: String = "Lane ?") {
+    init(tRace: Double, tVideo: Double? = nil, label: String = "Lane ?", status: LaneStatus = .finished) {
         self.id = UUID().uuidString
         self.tRace = tRace
         self.tVideo = tVideo
         self.label = label
+        self.status = status
     }
 }
 
@@ -90,8 +100,8 @@ class RaceTimingModel: ObservableObject {
         sessionData?.finishEvents.append(event)
     }
 
-    func recordFinishAtTime(_ time: Double, lane: String, videoTime: Double? = nil) {
-        let event = FinishEvent(tRace: time, tVideo: videoTime, label: lane)
+    func recordFinishAtTime(_ time: Double, lane: String, videoTime: Double? = nil, status: LaneStatus = .finished) {
+        let event = FinishEvent(tRace: time, tVideo: videoTime, label: lane, status: status)
         finishEvents.append(event)
         sessionData?.finishEvents.append(event)
 
@@ -99,10 +109,29 @@ class RaceTimingModel: ObservableObject {
         let videoTimeStr = videoTime.map { String(format: "%02d:%02d.%03d", Int($0) / 60, Int($0) % 60, Int(($0.truncatingRemainder(dividingBy: 1)) * 1000)) } ?? "N/A"
         print(">>> Finish marker saved:")
         print("    Lane: \(lane)")
+        print("    Status: \(status.rawValue)")
         print("    Race time: \(String(format: "%02d:%02d.%03d", Int(time) / 60, Int(time) % 60, Int((time.truncatingRemainder(dividingBy: 1)) * 1000)))")
         print("    Video time: \(videoTimeStr)")
 
         // Save session.json after adding finish marker
+        saveCurrentSession()
+    }
+
+    func recordLaneStatus(_ lane: String, status: LaneStatus) {
+        // Remove any existing entry for this lane
+        finishEvents.removeAll { $0.label == lane }
+        sessionData?.finishEvents.removeAll { $0.label == lane }
+
+        // Add the status marker at race time 0 (status-only markers don't have a finish time)
+        let event = FinishEvent(tRace: 0, tVideo: nil, label: lane, status: status)
+        finishEvents.append(event)
+        sessionData?.finishEvents.append(event)
+
+        print(">>> Lane status saved:")
+        print("    Lane: \(lane)")
+        print("    Status: \(status.rawValue)")
+
+        // Save session.json after adding status
         saveCurrentSession()
     }
 
