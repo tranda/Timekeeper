@@ -19,6 +19,7 @@ class CaptureManager: NSObject, ObservableObject {
     var videoStartTime: Date?
     var videoStopTime: Date?
     var timingModel: RaceTimingModel?
+    private var recordButtonClickTime: Date?  // Track when record button was clicked
 
 
     override init() {
@@ -253,10 +254,18 @@ class CaptureManager: NSObject, ObservableObject {
         // Keep natural landscape orientation for recording
         // The sensor records in landscape by default
 
+        // Record the start time when we initiate recording
+        let recordingInitiatedTime = Date()
+        self.recordButtonClickTime = recordingInitiatedTime
+        print("RECORD button clicked at: \(recordingInitiatedTime)")
+
         movieOutput.startRecording(to: fileURL, recordingDelegate: self)
 
         DispatchQueue.main.async {
             self.isRecording = true
+            // Set video start time immediately when we initiate recording
+            self.videoStartTime = recordingInitiatedTime
+            self.timingModel?.setVideoStartTime(recordingInitiatedTime)
             completion(true)
         }
     }
@@ -305,10 +314,16 @@ class CaptureManager: NSObject, ObservableObject {
 
 extension CaptureManager: AVCaptureFileOutputRecordingDelegate {
     func fileOutput(_ output: AVCaptureFileOutput, didStartRecordingTo fileURL: URL, from connections: [AVCaptureConnection]) {
+        let actualStartTime = Date()
         print("Recording started: \(fileURL.lastPathComponent)")
-        DispatchQueue.main.async {
-            self.videoStartTime = Date()
-            self.timingModel?.setVideoStartTime(self.videoStartTime!)
+
+        // Calculate and log the delay
+        if let clickTime = self.recordButtonClickTime {
+            let delay = actualStartTime.timeIntervalSince(clickTime)
+            print(">>> Recording startup delay: \(String(format: "%.3f", delay)) seconds (\(Int(delay * 1000))ms)")
+
+            // Don't use this delay for compensation - it's not accurate
+            self.timingModel?.recordingStartupDelay = 0
         }
     }
 

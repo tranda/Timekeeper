@@ -72,8 +72,11 @@ struct RaceTimelineView: View {
                     // Video available region
                     if captureManager.lastRecordedURL != nil {
                         GeometryReader { geometry in
+                            // Blue ribbon uses race timeline coordinates
                             let videoStartPercent = videoStartInRace / raceEndTime
                             let videoEndPercent = videoEndInRace / raceEndTime
+
+                            // Calculate positions - note that videoEndPercent can be > 1.0
                             let startX = geometry.size.width * videoStartPercent
                             let width = geometry.size.width * (videoEndPercent - videoStartPercent)
 
@@ -81,44 +84,86 @@ struct RaceTimelineView: View {
                                 .fill(Color.blue.opacity(0.3))
                                 .frame(width: width, height: 36)
                                 .offset(x: startX, y: 2)
+                                .allowsHitTesting(false)  // Don't interfere with interactions
                         }
                     }
 
                     // Finish markers
                     GeometryReader { geometry in
                         ForEach(timingModel.finishEvents) { event in
-                            let position = event.tRace / raceEndTime
-                            let xPosition = geometry.size.width * position
-
-                            VStack(spacing: 2) {
+                            ZStack(alignment: .topLeading) {
+                                // Vertical line - this is the exact position
                                 Rectangle()
                                     .fill(Color.green)
                                     .frame(width: 2, height: 40)
+                                    .shadow(color: Color.green.opacity(0.3), radius: 2, x: 0, y: 0)
+
+                                // Triangle pointer at top
+                                Path { path in
+                                    path.move(to: CGPoint(x: 1, y: 0))
+                                    path.addLine(to: CGPoint(x: -4, y: -6))
+                                    path.addLine(to: CGPoint(x: 6, y: -6))
+                                    path.closeSubpath()
+                                }
+                                .fill(Color.green)
+                                .frame(width: 10, height: 6)
+                                .offset(x: -4, y: -6)
+
+                                // Label below the line
                                 Text(event.label)
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.green)
+                                    .font(.system(size: 10, weight: .medium, design: .rounded))
+                                    .foregroundColor(.black)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 2)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 4)
+                                            .fill(Color.green)
+                                    )
+                                    .offset(x: -20, y: 44)
                             }
-                            .offset(x: xPosition - 1)
+                            .offset(x: calculateMarkerPosition(event: event, geometry: geometry))
                         }
                     }
                 }
                 .frame(height: 40)
 
-                // Scrubber
-                Slider(
-                    value: $currentRaceTime,
-                    in: 0...raceEndTime,
-                    onEditingChanged: { editing in
-                        isDragging = editing
-                        if !editing {
-                            seekToRaceTime()
-                        }
+                // Custom precise scrubber
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        // Track
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.gray.opacity(0.3))
+                            .frame(height: 4)
+                            .frame(maxWidth: .infinity)
+
+                        // Progress
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.accentColor)
+                            .frame(width: geometry.size.width * (currentRaceTime / raceEndTime), height: 4)
+
+                        // Thumb
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 16, height: 16)
+                            .overlay(Circle().stroke(Color.accentColor, lineWidth: 2))
+                            .offset(x: geometry.size.width * (currentRaceTime / raceEndTime) - 8)
                     }
-                )
-                .onChange(of: currentRaceTime) { _ in
-                    // Seek video in real-time while dragging
-                    seekToRaceTime()
+                    .frame(height: 16)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                isDragging = true
+                                let newTime = (value.location.x / geometry.size.width) * raceEndTime
+                                currentRaceTime = max(0, min(raceEndTime, newTime))
+                                seekToRaceTime()
+                            }
+                            .onEnded { _ in
+                                isDragging = false
+                            }
+                    )
                 }
+                .frame(height: 16)
 
                 // Time display
                 HStack {
@@ -172,6 +217,19 @@ struct RaceTimelineView: View {
             // Quick Actions
             HStack(spacing: 20) {
                 Button("Add Finish Here") {
+                    // Simply use the current slider position (currentRaceTime)
+                    // This is what the user has positioned on the timeline
+                    let videoTime = isVideoAvailable ? (currentRaceTime - videoStartInRace) : nil
+                    print(">>> Adding marker:")
+                    print("    Race time: \(formatTime(currentRaceTime))")
+                    if let vt = videoTime {
+                        print("    Video time: \(formatTime(vt)) (this will be stored)")
+                    } else {
+                        print("    Video time: N/A (outside video range)")
+                    }
+                    print("    Video starts at: \(formatTime(videoStartInRace)) in race")
+                    print("    Is video available: \(isVideoAvailable)")
+
                     // Show lane selection dialog
                     showLaneInput = true
                 }
@@ -253,6 +311,9 @@ struct RaceTimelineView: View {
                     Button("Save Finish") {
                         let laneIndex = Int(selectedLane) ?? 1
                         let laneName = timingModel.sessionData?.teamNames[safe: laneIndex - 1] ?? "Lane \(selectedLane)"
+                        // Calculate video time only if we're within video range
+                        let videoTime = isVideoAvailable ? (currentRaceTime - videoStartInRace) : nil
+
                         // Check if this lane already has a finish time
                         if timingModel.finishEvents.contains(where: { $0.label == laneName }) {
                             laneToOverwrite = laneName
@@ -261,7 +322,7 @@ struct RaceTimelineView: View {
                                 showOverwriteConfirmation = true  // Then show confirmation
                             }
                         } else {
-                            timingModel.recordFinishAtTime(currentRaceTime, lane: laneName)
+                            timingModel.recordFinishAtTime(currentRaceTime, lane: laneName, videoTime: videoTime)
                             showLaneInput = false
                         }
                     }
@@ -280,8 +341,10 @@ struct RaceTimelineView: View {
                 if let lane = laneToOverwrite {
                     // Remove the existing finish event for this lane
                     timingModel.finishEvents.removeAll { $0.label == lane }
+                    // Calculate video time only if we're within video range
+                    let videoTime = isVideoAvailable ? (currentRaceTime - videoStartInRace) : nil
                     // Add the new finish time
-                    timingModel.recordFinishAtTime(currentRaceTime, lane: lane)
+                    timingModel.recordFinishAtTime(currentRaceTime, lane: lane, videoTime: videoTime)
                     showLaneInput = false
                     laneToOverwrite = nil
                 }
@@ -301,6 +364,7 @@ struct RaceTimelineView: View {
     private func seekToRaceTime() {
         if isVideoAvailable {
             let videoTime = currentRaceTime - videoStartInRace
+            print("Seeking - Race time: \(formatTime(currentRaceTime)), Video offset: \(formatTime(videoStartInRace)), Seeking to: \(formatTime(videoTime))")
             playerViewModel.isSeekingOutsideVideo = false
             playerViewModel.seek(to: videoTime, precise: true)
         } else {
@@ -314,6 +378,34 @@ struct RaceTimelineView: View {
         let secs = Int(seconds) % 60
         let millis = Int((seconds.truncatingRemainder(dividingBy: 1)) * 1000)
         return String(format: "%02d:%02d.%03d", minutes, secs, millis)
+    }
+
+    private func calculateMarkerPosition(event: FinishEvent, geometry: GeometryProxy) -> CGFloat {
+        // The geometry width represents the full race timeline (0 to raceEndTime)
+        // This should match the custom scrubber width exactly
+        let raceTimelineWidth = geometry.size.width
+
+        // Position marker based on race time
+        let position = event.tRace / raceEndTime
+        let xPosition = raceTimelineWidth * position
+
+        // Debug log for troubleshooting - log the most recent marker
+        if event.id == timingModel.finishEvents.last?.id {
+            print(">>> Marker position calculation:")
+            print("    Label: \(event.label)")
+            print("    Race time: \(formatTime(event.tRace))")
+            print("    Race end: \(formatTime(raceEndTime))")
+            print("    Video end in race: \(formatTime(videoEndInRace))")
+            print("    Video extends beyond race: \(videoEndInRace > raceEndTime)")
+            print("    Position %: \(position * 100)%")
+            print("    Geometry width: \(geometry.size.width)px")
+            print("    X position: \(xPosition)px")
+            if let vt = event.tVideo {
+                print("    Video time: \(formatTime(vt))")
+            }
+        }
+
+        return xPosition
     }
 
     private func exportCurrentFrame() {

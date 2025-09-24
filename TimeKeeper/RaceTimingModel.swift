@@ -6,12 +6,14 @@ let MAX_LANES = 4
 
 struct FinishEvent: Identifiable, Codable {
     let id: String
-    let tRace: Double
+    let tRace: Double  // Time in race (from race start)
+    let tVideo: Double? // Time in video (from video start) - optional for backwards compatibility
     let label: String
 
-    init(tRace: Double, label: String = "Lane ?") {
+    init(tRace: Double, tVideo: Double? = nil, label: String = "Lane ?") {
         self.id = UUID().uuidString
         self.tRace = tRace
+        self.tVideo = tVideo
         self.label = label
     }
 }
@@ -25,6 +27,7 @@ struct SessionData: Codable {
     var raceStartInVideoSeconds: Double
     var finishEvents: [FinishEvent]
     var notes: String
+    var recordingStartupDelay: Double  // Delay between record button and actual video start
 
     init() {
         self.raceName = "Race"
@@ -32,6 +35,7 @@ struct SessionData: Codable {
         self.raceStartInVideoSeconds = 0
         self.finishEvents = []
         self.notes = ""
+        self.recordingStartupDelay = 0
     }
 }
 
@@ -45,6 +49,7 @@ class RaceTimingModel: ObservableObject {
     // @Published var autoStartRecording = false
     @Published var sessionData: SessionData? = SessionData()
     @Published var isRaceInitialized = false
+    @Published var recordingStartupDelay: Double = 0  // Actual delay between record click and video start
 
     private var timer: Timer?
     var outputDirectory: URL?
@@ -85,10 +90,17 @@ class RaceTimingModel: ObservableObject {
         sessionData?.finishEvents.append(event)
     }
 
-    func recordFinishAtTime(_ time: Double, lane: String) {
-        let event = FinishEvent(tRace: time, label: lane)
+    func recordFinishAtTime(_ time: Double, lane: String, videoTime: Double? = nil) {
+        let event = FinishEvent(tRace: time, tVideo: videoTime, label: lane)
         finishEvents.append(event)
         sessionData?.finishEvents.append(event)
+
+        // Log the marker details
+        let videoTimeStr = videoTime.map { String(format: "%02d:%02d.%03d", Int($0) / 60, Int($0) % 60, Int(($0.truncatingRemainder(dividingBy: 1)) * 1000)) } ?? "N/A"
+        print(">>> Finish marker saved:")
+        print("    Lane: \(lane)")
+        print("    Race time: \(String(format: "%02d:%02d.%03d", Int(time) / 60, Int(time) % 60, Int((time.truncatingRemainder(dividingBy: 1)) * 1000)))")
+        print("    Video time: \(videoTimeStr)")
 
         // Save session.json after adding finish marker
         saveCurrentSession()
@@ -160,6 +172,7 @@ class RaceTimingModel: ObservableObject {
 
     func saveSession(to url: URL) {
         sessionData?.finishEvents = finishEvents
+        sessionData?.recordingStartupDelay = recordingStartupDelay
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -183,6 +196,7 @@ class RaceTimingModel: ObservableObject {
         sessionData = loadedSession
         raceStartTime = loadedSession.raceStartWallclock
         finishEvents = loadedSession.finishEvents
+        recordingStartupDelay = loadedSession.recordingStartupDelay
         isRaceActive = false
 
         if let raceStart = raceStartTime {
