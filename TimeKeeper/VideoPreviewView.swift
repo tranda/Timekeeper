@@ -21,9 +21,16 @@ struct VideoPreviewView: NSViewRepresentable {
             layer?.backgroundColor = NSColor.black.cgColor
 
             previewLayer = AVCaptureVideoPreviewLayer(session: session)
-            previewLayer?.videoGravity = .resizeAspect
+            previewLayer?.videoGravity = .resizeAspect  // Show full frame with letterboxing - see everything that will be recorded
             previewLayer?.frame = bounds
             previewLayer?.connection?.automaticallyAdjustsVideoMirroring = false
+
+            // Keep natural orientation - show landscape as recorded
+            if let connection = previewLayer?.connection {
+                // Don't force portrait - show the natural landscape orientation
+                // This shows what's actually being recorded
+                connection.isEnabled = true
+            }
 
             if let previewLayer = previewLayer {
                 layer?.addSublayer(previewLayer)

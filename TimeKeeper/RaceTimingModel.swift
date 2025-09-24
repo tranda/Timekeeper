@@ -1,6 +1,9 @@
 import Foundation
 import Combine
 
+// Configuration constant - change this to adjust the number of lanes
+let MAX_LANES = 4
+
 struct FinishEvent: Identifiable, Codable {
     let id: String
     let tRace: Double
@@ -14,6 +17,8 @@ struct FinishEvent: Identifiable, Codable {
 }
 
 struct SessionData: Codable {
+    var raceName: String
+    var teamNames: [String]
     var raceStartWallclock: Date?
     var videoStartWallclock: Date?
     var videoStopWallclock: Date?
@@ -22,6 +27,8 @@ struct SessionData: Codable {
     var notes: String
 
     init() {
+        self.raceName = "Race"
+        self.teamNames = (1...MAX_LANES).map { "Lane \($0)" }
         self.raceStartInVideoSeconds = 0
         self.finishEvents = []
         self.notes = ""
@@ -34,10 +41,13 @@ class RaceTimingModel: ObservableObject {
     @Published var raceElapsedTime: Double = 0
     @Published var finishEvents: [FinishEvent] = []
     @Published var isRaceActive = false
-    @Published var autoStartRecording = false
+    // Auto-start recording disabled - only manually record finish line
+    // @Published var autoStartRecording = false
     @Published var sessionData: SessionData? = SessionData()
+    @Published var isRaceInitialized = false
 
     private var timer: Timer?
+    var outputDirectory: URL?
 
     var formattedElapsedTime: String {
         let minutes = Int(raceElapsedTime) / 60
@@ -48,7 +58,10 @@ class RaceTimingModel: ObservableObject {
 
     func startRace() {
         raceStartTime = Date()
-        sessionData = SessionData()
+        // Don't create new SessionData here - it was already initialized with the race name
+        if sessionData == nil {
+            sessionData = SessionData()
+        }
         sessionData?.raceStartWallclock = raceStartTime
         isRaceActive = true
         raceElapsedTime = 0
@@ -76,6 +89,9 @@ class RaceTimingModel: ObservableObject {
         let event = FinishEvent(tRace: time, label: lane)
         finishEvents.append(event)
         sessionData?.finishEvents.append(event)
+
+        // Save session.json after adding finish marker
+        saveCurrentSession()
     }
 
     func stopRace() {
@@ -96,7 +112,20 @@ class RaceTimingModel: ObservableObject {
         raceElapsedTime = 0
         finishEvents = []
         isRaceActive = false
+        isRaceInitialized = false
         sessionData = SessionData()
+    }
+
+    func initializeNewRace(name: String, teamNames: [String]) {
+        resetRace()
+        // Ensure sessionData exists and set the race name and teams
+        if sessionData == nil {
+            sessionData = SessionData()
+        }
+        sessionData?.raceName = name
+        sessionData?.teamNames = teamNames
+        isRaceInitialized = true
+        print("Initialized new race: \(name) with \(teamNames.count) teams")
     }
 
     func setVideoStartTime(_ date: Date) {
@@ -164,5 +193,15 @@ class RaceTimingModel: ObservableObject {
                 raceElapsedTime = Date().timeIntervalSince(raceStart)
             }
         }
+    }
+
+    func saveCurrentSession() {
+        // Save to Desktop or the configured output directory
+        let saveDirectory = outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        let raceName = sessionData?.raceName ?? "Race"
+        let sessionFileName = "\(raceName).json"
+        let sessionURL = saveDirectory.appendingPathComponent(sessionFileName)
+        saveSession(to: sessionURL)
+        print("Session saved to: \(sessionURL.path)")
     }
 }

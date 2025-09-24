@@ -6,6 +6,7 @@ class PlayerViewModel: ObservableObject {
     @Published var duration: Double = 0
     @Published var currentTime: Double = 0
     @Published var isPlaying = false
+    @Published var isSeekingOutsideVideo = false
 
     private var timeObserver: Any?
     private var statusObserver: AnyCancellable?

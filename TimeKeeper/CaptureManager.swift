@@ -5,13 +5,16 @@ class CaptureManager: NSObject, ObservableObject {
     @Published var availableDevices: [AVCaptureDevice] = []
     @Published var selectedDevice: AVCaptureDevice?
     @Published var isRecording = false
-    @Published var outputDirectory: URL?
+    @Published var outputDirectory: URL? = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
     @Published var lastRecordedURL: URL?
     @Published var isSessionRunning = false
     @Published var captureSession: AVCaptureSession?
     private var movieFileOutput: AVCaptureMovieFileOutput?
     private var currentDeviceInput: AVCaptureDeviceInput?
     private var stopRecordingCompletion: ((URL?) -> Void)?
+
+    // Add a serial queue for session operations
+    private let sessionQueue = DispatchQueue(label: "com.timekeeper.sessionQueue")
 
     var videoStartTime: Date?
     var videoStopTime: Date?
@@ -20,7 +23,7 @@ class CaptureManager: NSObject, ObservableObject {
 
     override init() {
         super.init()
-        refreshDevices()
+        // Don't refresh devices here - let ContentView do it after setup
     }
 
     func refreshDevices() {
@@ -33,24 +36,42 @@ class CaptureManager: NSObject, ObservableObject {
         let devices = Array(discoverySession.devices)
         print("Found devices:")
         for device in devices {
-            print("  - \(device.localizedName): \(device.uniqueID)")
+            print("  - \(device.localizedName): \(device.uniqueID) [Position: \(device.position.rawValue)]")
         }
-        DispatchQueue.main.async {
-            self.availableDevices = devices
+
+        // Sort devices to prefer back camera - do this before dispatching
+        let sortedDevices = devices.sorted { device1, device2 in
+            // Back camera (position = 1) comes first
+            if device1.position == .back && device2.position != .back {
+                return true
+            }
+            if device1.position != .back && device2.position == .back {
+                return false
+            }
+            // Otherwise maintain original order
+            return false
+        }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.availableDevices = sortedDevices
         }
     }
 
     func selectDevice(_ device: AVCaptureDevice) {
         print("Selecting device: \(device.localizedName) - ID: \(device.uniqueID)")
-        DispatchQueue.main.async {
-            self.selectedDevice = device
+        DispatchQueue.main.async { [weak self] in
+            self?.selectedDevice = device
         }
-        configureSession { success in
-            if success {
-                print("Successfully configured session for: \(device.localizedName)")
-                self.startSessionIfNeeded()
-            } else {
-                print("Failed to configure session for: \(device.localizedName)")
+
+        // Use the serial queue for session configuration
+        sessionQueue.async { [weak self] in
+            self?.configureSession { success in
+                if success {
+                    print("Successfully configured session for: \(device.localizedName)")
+                    self?.startSessionIfNeeded()
+                } else {
+                    print("Failed to configure session for: \(device.localizedName)")
+                }
             }
         }
     }
@@ -69,24 +90,27 @@ class CaptureManager: NSObject, ObservableObject {
 
     func configureSession(completion: @escaping (Bool) -> Void) {
         guard let device = selectedDevice else {
-            completion(false)
+            DispatchQueue.main.async {
+                completion(false)
+            }
             return
         }
 
         print("Configuring session with device: \(device.localizedName)")
 
+        // Create session if needed - do this synchronously to avoid race conditions
         if captureSession == nil {
             let newSession = AVCaptureSession()
-            captureSession = newSession
-            // Notify UI that session is available
-            DispatchQueue.main.async {
+            DispatchQueue.main.sync {
                 self.captureSession = newSession
                 self.objectWillChange.send()
             }
         }
 
         guard let session = captureSession else {
-            completion(false)
+            DispatchQueue.main.async {
+                completion(false)
+            }
             return
         }
 
@@ -102,7 +126,18 @@ class CaptureManager: NSObject, ObservableObject {
             movieFileOutput = nil
         }
 
-        session.sessionPreset = .high
+        // Since iPhone cameras don't provide portrait formats, use HD landscape and rotate
+        // Use 1080p if available for best quality
+        if session.canSetSessionPreset(.hd1920x1080) {
+            session.sessionPreset = .hd1920x1080
+            print("Using HD 1920x1080 preset - will rotate to portrait")
+        } else if session.canSetSessionPreset(.hd1280x720) {
+            session.sessionPreset = .hd1280x720
+            print("Using HD 1280x720 preset - will rotate to portrait")
+        } else {
+            session.sessionPreset = .high
+            print("Using high preset - will rotate to portrait")
+        }
 
         do {
             let deviceInput = try AVCaptureDeviceInput(device: device)
@@ -124,6 +159,23 @@ class CaptureManager: NSObject, ObservableObject {
                 movieFileOutput = movieOutput
 
                 if let connection = movieOutput.connection(with: .video) {
+                    // Check current dimensions
+                    let formatDescription = device.activeFormat.formatDescription
+                    let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
+                    print("Active format dimensions: \(dimensions.width) x \(dimensions.height)")
+
+                    // Keep natural landscape orientation
+                    // Don't force portrait - record in the sensor's natural orientation
+                    print("Using natural landscape orientation for recording")
+
+                    // Enable mirroring only for front-facing cameras
+                    // Back cameras should not be mirrored
+                    if device.position == .front {
+                        connection.isVideoMirrored = true
+                    } else {
+                        connection.isVideoMirrored = false
+                    }
+
                     // Video stabilization is only available on iOS
                     #if os(iOS)
                     if connection.isVideoStabilizationSupported {
@@ -133,30 +185,36 @@ class CaptureManager: NSObject, ObservableObject {
                 }
             }
 
-            session.commitConfiguration()
-            completion(true)
+                session.commitConfiguration()
+
+            DispatchQueue.main.async {
+                completion(true)
+            }
 
         } catch {
             print("Error configuring session: \(error)")
             session.commitConfiguration()
-            completion(false)
+            DispatchQueue.main.async {
+                completion(false)
+            }
         }
     }
 
     func startSessionIfNeeded() {
         guard let session = captureSession else { return }
 
-        if !session.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async {
+        // Use the session queue to avoid concurrent modifications
+        sessionQueue.async { [weak self] in
+            if !session.isRunning {
                 session.startRunning()
-                DispatchQueue.main.async {
-                    self.isSessionRunning = true
-                    self.objectWillChange.send()
+                DispatchQueue.main.async { [weak self] in
+                    self?.isSessionRunning = true
+                    self?.objectWillChange.send()
                 }
-            }
-        } else {
-            DispatchQueue.main.async {
-                self.isSessionRunning = true
+            } else {
+                DispatchQueue.main.async { [weak self] in
+                    self?.isSessionRunning = true
+                }
             }
         }
     }
@@ -164,11 +222,11 @@ class CaptureManager: NSObject, ObservableObject {
     func stopSession() {
         guard let session = captureSession else { return }
 
-        if session.isRunning {
-            DispatchQueue.global(qos: .userInitiated).async {
+        sessionQueue.async { [weak self] in
+            if session.isRunning {
                 session.stopRunning()
-                DispatchQueue.main.async {
-                    self.isSessionRunning = false
+                DispatchQueue.main.async { [weak self] in
+                    self?.isSessionRunning = false
                 }
             }
         }
@@ -181,11 +239,19 @@ class CaptureManager: NSObject, ObservableObject {
             return
         }
 
-        let outputFolder = folder ?? outputDirectory ?? FileManager.default.temporaryDirectory
+        let outputFolder = folder ?? outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+
+        // Use race name from timing model if available
+        let raceName = timingModel?.sessionData?.raceName ?? "Race"
+        print("Starting recording with race name: '\(raceName)'")
         let timestamp = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .medium)
             .replacingOccurrences(of: ":", with: "-")
-        let fileName = "TimeKeeper_\(timestamp).mov"
+        let fileName = "\(raceName)_\(timestamp).mov"
         let fileURL = outputFolder.appendingPathComponent(fileName)
+        print("Recording to file: \(fileName)")
+
+        // Keep natural landscape orientation for recording
+        // The sensor records in landscape by default
 
         movieOutput.startRecording(to: fileURL, recordingDelegate: self)
 
@@ -259,7 +325,9 @@ extension CaptureManager: AVCaptureFileOutputRecordingDelegate {
                 self.timingModel?.setVideoStopTime(self.videoStopTime!)
 
                 let outputFolder = self.outputDirectory ?? outputFileURL.deletingLastPathComponent()
-                let sessionURL = outputFolder.appendingPathComponent("session.json")
+                let raceName = self.timingModel?.sessionData?.raceName ?? "Race"
+                let sessionFileName = "\(raceName).json"
+                let sessionURL = outputFolder.appendingPathComponent(sessionFileName)
                 self.timingModel?.saveSession(to: sessionURL)
 
                 self.stopRecordingCompletion?(outputFileURL)

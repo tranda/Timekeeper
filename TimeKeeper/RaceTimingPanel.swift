@@ -8,12 +8,38 @@ struct RaceTimingPanel: View {
     @State private var showLaneInput = false
     @State private var selectedLane = "1"
     @State private var manualTimeEntry: Double?
+    @State private var showOverwriteConfirmation = false
+    @State private var laneToOverwrite: String? = nil
+    @State private var showNewRaceSheet = false
+    @State private var newRaceName = ""
+    @State private var newTeamNames = (1...MAX_LANES).map { "Lane \($0)" }
 
     var body: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 20) {
-                // Main controls in horizontal layout with equal distribution
-                HStack(alignment: .top, spacing: 0) {
+        VStack(spacing: 20) {
+            // New Race button at the top (visible but disabled during race)
+            Button(action: {
+                // Set default race name with current date/time
+                let dateFormatter = DateFormatter()
+                dateFormatter.dateFormat = "MMM d HH-mm"
+                newRaceName = "Race \(dateFormatter.string(from: Date()))"
+                showNewRaceSheet = true
+            }) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(timingModel.isRaceActive ? Color.blue.opacity(0.5) : Color.blue)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                    Text("NEW RACE")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.white)
+                }
+            }
+            .buttonStyle(.plain)
+            .disabled(timingModel.isRaceActive)
+            .padding(.horizontal)
+
+            // Main controls in horizontal layout
+            HStack(alignment: .top, spacing: 30) {
                 // START/STOP Section
                 VStack(spacing: 15) {
                     if !timingModel.isRaceActive {
@@ -21,7 +47,7 @@ struct RaceTimingPanel: View {
                             ZStack {
                                 Circle()
                                     .fill(Color.red)
-                                    .frame(width: min(100, geometry.size.width * 0.12), height: min(100, geometry.size.width * 0.12))
+                                    .frame(width: 100, height: 100)
 
                                 Text("START")
                                     .font(.system(size: 24, weight: .bold))
@@ -29,12 +55,14 @@ struct RaceTimingPanel: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .disabled(!timingModel.isRaceInitialized || (timingModel.raceStartTime != nil && !timingModel.isRaceActive))
+                        .opacity((timingModel.isRaceInitialized && (timingModel.raceStartTime == nil || timingModel.isRaceActive)) ? 1.0 : 0.5)
                     } else {
                         Button(action: handleStopPress) {
                             ZStack {
                                 Circle()
                                     .fill(Color.orange)
-                                    .frame(width: min(100, geometry.size.width * 0.12), height: min(100, geometry.size.width * 0.12))
+                                    .frame(width: 100, height: 100)
 
                                 Text("STOP")
                                     .font(.system(size: 24, weight: .bold))
@@ -61,17 +89,13 @@ struct RaceTimingPanel: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                Divider()
-                    .frame(height: 150)
-                    .padding(.horizontal)
-
                 // VIDEO RECORDING Section
                 VStack(spacing: 15) {
                     Button(action: handleRecordPress) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 15)
                                 .fill(captureManager.isRecording ? Color.red : Color.green)
-                                .frame(width: min(100, geometry.size.width * 0.12), height: min(100, geometry.size.width * 0.12))
+                                .frame(width: 100, height: 100)
 
                             VStack {
                                 Image(systemName: captureManager.isRecording ? "stop.circle" : "video.circle")
@@ -85,7 +109,8 @@ struct RaceTimingPanel: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .disabled(captureManager.selectedDevice == nil)
+                    .disabled(captureManager.selectedDevice == nil || (!timingModel.isRaceInitialized || (timingModel.raceStartTime != nil && !timingModel.isRaceActive)))
+                    .opacity((captureManager.selectedDevice != nil && timingModel.isRaceInitialized && (timingModel.raceStartTime == nil || timingModel.isRaceActive)) ? 1.0 : 0.5)
 
                     HStack {
                         if captureManager.isRecording {
@@ -110,17 +135,14 @@ struct RaceTimingPanel: View {
                 }
                 .frame(maxWidth: .infinity)
 
-                Divider()
-                    .frame(height: 150)
-                    .padding(.horizontal)
-
                 // OPTIONS Section
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Options")
                         .font(.headline)
 
-                    Toggle("Auto-start video", isOn: $timingModel.autoStartRecording)
-                        .toggleStyle(.checkbox)
+                    // Auto-start video disabled - only record finish line
+                    // Toggle("Auto-start video", isOn: $timingModel.autoStartRecording)
+                    //     .toggleStyle(.checkbox)
 
                     Button("Reset") {
                         showResetConfirmation = true
@@ -132,63 +154,132 @@ struct RaceTimingPanel: View {
                 }
                 .frame(maxWidth: .infinity)
             }
-            .frame(maxWidth: .infinity)
 
             Divider()
 
+            // Race Results Table
             VStack(alignment: .leading, spacing: 10) {
-                Text("Finish Events")
+                Text("Race Results")
                     .font(.headline)
 
-                if timingModel.finishEvents.isEmpty {
-                    Text("No finishes recorded")
-                        .foregroundColor(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding()
-                } else {
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 5) {
-                            ForEach(timingModel.finishEvents) { event in
-                                HStack {
-                                    Text(formatRaceTime(event.tRace))
-                                        .font(.system(size: 14, design: .monospaced))
-                                        .frame(width: 100, alignment: .leading)
+                if timingModel.isRaceInitialized {
+                    // Table Header
+                    HStack(spacing: 0) {
+                        Text("Lane")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .frame(width: 50, alignment: .leading)
 
-                                    Text(event.label)
+                        Text("Team")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .frame(width: 120, alignment: .leading)
+
+                        Text("Time")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .frame(width: 100, alignment: .leading)
+
+                        Text("Position")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .frame(width: 70, alignment: .leading)
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.gray.opacity(0.1))
+
+                    ScrollView {
+                        VStack(spacing: 2) {
+                            ForEach(Array(timingModel.sessionData?.teamNames.enumerated() ?? [].enumerated()), id: \.offset) { index, teamName in
+                                let laneNumber = index + 1
+                                let finishEvent = timingModel.finishEvents.first { $0.label == teamName }
+                                let position = finishEvent != nil ? calculatePosition(for: finishEvent!, in: timingModel.finishEvents) : nil
+
+                                HStack(spacing: 0) {
+                                    Text("\(laneNumber)")
                                         .font(.system(size: 14))
-                                        .foregroundColor(.secondary)
+                                        .frame(width: 50, alignment: .leading)
+
+                                    Text(teamName)
+                                        .font(.system(size: 14))
+                                        .frame(width: 120, alignment: .leading)
+
+                                    if let event = finishEvent {
+                                        Text(formatRaceTime(event.tRace))
+                                            .font(.system(size: 14, design: .monospaced))
+                                            .frame(width: 100, alignment: .leading)
+
+                                        Text(position != nil ? "\(position!)" : "-")
+                                            .font(.system(size: 14))
+                                            .fontWeight(position == 1 ? .bold : .regular)
+                                            .foregroundColor(position == 1 ? .yellow : .primary)
+                                            .frame(width: 70, alignment: .leading)
+                                    } else {
+                                        Text("-")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 100, alignment: .leading)
+
+                                        Text("-")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 70, alignment: .leading)
+                                    }
 
                                     Spacer()
                                 }
                                 .padding(.horizontal, 10)
-                                .padding(.vertical, 2)
+                                .padding(.vertical, 4)
+                                .background(index % 2 == 0 ? Color.clear : Color.gray.opacity(0.05))
                             }
                         }
                     }
                     .frame(maxHeight: 150)
-                    .background(Color.gray.opacity(0.05))
+                    .background(Color.gray.opacity(0.02))
                     .cornerRadius(5)
+                } else {
+                    Text("Click 'New Race' to initialize")
+                        .foregroundColor(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding()
                 }
             }
             .frame(maxWidth: .infinity)
-            }
-            .padding(20)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(NSColor.controlBackgroundColor))
-            .cornerRadius(10)
         }
+        .padding(20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color(NSColor.controlBackgroundColor))
+        .cornerRadius(10)
         .sheet(isPresented: $showLaneInput) {
             VStack(spacing: 20) {
                 Text("Enter Lane/Boat")
                     .font(.headline)
 
-                Picker("Lane", selection: $selectedLane) {
-                    ForEach(["1", "2", "3", "4", "5", "6", "7", "8"], id: \.self) { lane in
-                        Text("Lane \(lane)").tag(lane)
+                VStack(spacing: 8) {
+                    ForEach(Array(timingModel.sessionData?.teamNames.enumerated() ?? [].enumerated()), id: \.offset) { index, name in
+                        Button(action: {
+                            selectedLane = String(index + 1)
+                        }) {
+                            HStack {
+                                Text(name)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                if selectedLane == String(index + 1) {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(selectedLane == String(index + 1) ? Color.accentColor.opacity(0.1) : Color.clear)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 300)
+                .frame(width: 250)
 
                 HStack {
                     Button("Cancel") {
@@ -199,12 +290,23 @@ struct RaceTimingPanel: View {
 
                     Button("Save Finish") {
                         if let manualTime = manualTimeEntry {
-                            // Recording from video scrubbing
-                            let raceTime = timingModel.raceTimeForVideoTime(manualTime) ?? manualTime
-                            timingModel.recordFinishAtTime(raceTime, lane: "Lane \(selectedLane)")
+                            let laneIndex = Int(selectedLane) ?? 1
+                            let laneName = timingModel.sessionData?.teamNames[safe: laneIndex - 1] ?? "Lane \(selectedLane)"
+                            // Check if this lane already has a finish time
+                            if timingModel.finishEvents.contains(where: { $0.label == laneName }) {
+                                laneToOverwrite = laneName
+                                showLaneInput = false  // Close the input sheet first
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    showOverwriteConfirmation = true  // Then show confirmation
+                                }
+                            } else {
+                                // Recording from video scrubbing
+                                let raceTime = timingModel.raceTimeForVideoTime(manualTime) ?? manualTime
+                                timingModel.recordFinishAtTime(raceTime, lane: laneName)
+                                showLaneInput = false
+                                manualTimeEntry = nil
+                            }
                         }
-                        showLaneInput = false
-                        manualTimeEntry = nil
                     }
                     .keyboardShortcut(.return)
                     .buttonStyle(.borderedProminent)
@@ -221,23 +323,86 @@ struct RaceTimingPanel: View {
         } message: {
             Text("This will clear all race timing data and finish events.")
         }
+        .alert("Overwrite Lane Time?", isPresented: $showOverwriteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                laneToOverwrite = nil
+            }
+            Button("Overwrite", role: .destructive) {
+                if let lane = laneToOverwrite, let manualTime = manualTimeEntry {
+                    // Remove the existing finish event for this lane
+                    timingModel.finishEvents.removeAll { $0.label == lane }
+                    // Add the new finish time
+                    let raceTime = timingModel.raceTimeForVideoTime(manualTime) ?? manualTime
+                    timingModel.recordFinishAtTime(raceTime, lane: lane)
+                    showLaneInput = false
+                    manualTimeEntry = nil
+                    laneToOverwrite = nil
+                }
+            }
+        } message: {
+            if let lane = laneToOverwrite {
+                Text("\(lane) already has a recorded time. Do you want to overwrite it?")
+            }
+        }
+        .sheet(isPresented: $showNewRaceSheet) {
+            VStack(spacing: 20) {
+                Text("Setup New Race")
+                    .font(.title2)
+                    .bold()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Race Name:")
+                        .font(.headline)
+                    TextField("Enter race name", text: $newRaceName)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 300)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Team/Lane Names:")
+                        .font(.headline)
+
+                    VStack(spacing: 8) {
+                        ForEach(0..<MAX_LANES, id: \.self) { index in
+                            HStack {
+                                Text("Lane \(index + 1):")
+                                    .frame(width: 60, alignment: .trailing)
+                                TextField("Lane \(index + 1)", text: $newTeamNames[index])
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 200)
+                            }
+                        }
+                    }
+                }
+
+                HStack(spacing: 20) {
+                    Button("Cancel") {
+                        showNewRaceSheet = false
+                    }
+                    .keyboardShortcut(.escape)
+
+                    Button("Start New Race") {
+                        timingModel.initializeNewRace(name: newRaceName, teamNames: newTeamNames)
+                        // Clear the recorded video and reset capture manager state
+                        captureManager.lastRecordedURL = nil
+                        captureManager.videoStartTime = nil
+                        captureManager.videoStopTime = nil
+                        playerViewModel.player.replaceCurrentItem(with: nil)
+                        playerViewModel.isSeekingOutsideVideo = false
+                        showNewRaceSheet = false
+                    }
+                    .keyboardShortcut(.return)
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+            .padding(40)
+            .frame(width: 450)
+        }
     }
 
     private func handleStartPress() {
         timingModel.startRace()
-
-        if timingModel.autoStartRecording && !captureManager.isRecording {
-            // Ensure output directory is set
-            if captureManager.outputDirectory == nil {
-                captureManager.outputDirectory = FileManager.default.temporaryDirectory
-            }
-
-            captureManager.startRecording(to: captureManager.outputDirectory) { success in
-                if success {
-                    print("Auto-started recording with race timer")
-                }
-            }
-        }
+        // Auto-start recording disabled - only manually record finish line
     }
 
     private func handleStopPress() {
@@ -261,11 +426,7 @@ struct RaceTimingPanel: View {
                 print("Stopped video recording")
             }
         } else {
-            // Ensure output directory is set
-            if captureManager.outputDirectory == nil {
-                captureManager.outputDirectory = FileManager.default.temporaryDirectory
-            }
-
+            // Use the output directory (defaults to Desktop)
             captureManager.startRecording(to: captureManager.outputDirectory) { success in
                 if success {
                     print("Started video recording")
@@ -279,5 +440,20 @@ struct RaceTimingPanel: View {
         let secs = Int(seconds) % 60
         let millis = Int((seconds.truncatingRemainder(dividingBy: 1)) * 1000)
         return String(format: "%02d:%02d.%03d", minutes, secs, millis)
+    }
+
+    private func calculatePosition(for event: FinishEvent, in events: [FinishEvent]) -> Int? {
+        let sortedEvents = events.sorted { $0.tRace < $1.tRace }
+        if let index = sortedEvents.firstIndex(where: { $0.id == event.id }) {
+            return index + 1
+        }
+        return nil
+    }
+}
+
+// Safe array access extension
+extension Array {
+    subscript(safe index: Index) -> Element? {
+        return indices.contains(index) ? self[index] : nil
     }
 }

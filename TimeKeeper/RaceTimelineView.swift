@@ -10,6 +10,10 @@ struct RaceTimelineView: View {
     @State private var isDragging = false
     @State private var showLaneInput = false
     @State private var selectedLane = "1"
+    @State private var showOverwriteConfirmation = false
+    @State private var laneToOverwrite: String? = nil
+    @State private var showExportSuccess = false
+    @State private var isExporting = false
 
     var raceEndTime: Double {
         guard let raceStart = timingModel.raceStartTime else { return 0 }
@@ -174,7 +178,7 @@ struct RaceTimelineView: View {
                 .buttonStyle(.bordered)
 
                 if !timingModel.finishEvents.isEmpty {
-                    Menu("Jump to Finish") {
+                    Menu("Jump to marker") {
                         ForEach(timingModel.finishEvents) { event in
                             Button("\(event.label): \(formatTime(event.tRace))") {
                                 currentRaceTime = event.tRace
@@ -183,6 +187,16 @@ struct RaceTimelineView: View {
                         }
                     }
                     .buttonStyle(.bordered)
+                }
+
+                Spacer()
+
+                // Export Image button in the center
+                if isVideoAvailable && captureManager.lastRecordedURL != nil {
+                    Button("EXPORT IMAGE") {
+                        exportCurrentFrame()
+                    }
+                    .buttonStyle(.borderedProminent)
                 }
 
                 Spacer()
@@ -207,13 +221,28 @@ struct RaceTimelineView: View {
                     .font(.subheadline)
                     .foregroundColor(.secondary)
 
-                Picker("Lane", selection: $selectedLane) {
-                    ForEach(["1", "2", "3", "4", "5", "6", "7", "8"], id: \.self) { lane in
-                        Text("Lane \(lane)").tag(lane)
+                VStack(spacing: 8) {
+                    ForEach(Array(timingModel.sessionData?.teamNames.enumerated() ?? [].enumerated()), id: \.offset) { index, name in
+                        Button(action: {
+                            selectedLane = String(index + 1)
+                        }) {
+                            HStack {
+                                Text(name)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                if selectedLane == String(index + 1) {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.accentColor)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(selectedLane == String(index + 1) ? Color.accentColor.opacity(0.1) : Color.clear)
+                            .cornerRadius(6)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 300)
+                .frame(width: 250)
 
                 HStack(spacing: 20) {
                     Button("Cancel") {
@@ -222,8 +251,19 @@ struct RaceTimelineView: View {
                     .keyboardShortcut(.escape)
 
                     Button("Save Finish") {
-                        timingModel.recordFinishAtTime(currentRaceTime, lane: "Lane \(selectedLane)")
-                        showLaneInput = false
+                        let laneIndex = Int(selectedLane) ?? 1
+                        let laneName = timingModel.sessionData?.teamNames[safe: laneIndex - 1] ?? "Lane \(selectedLane)"
+                        // Check if this lane already has a finish time
+                        if timingModel.finishEvents.contains(where: { $0.label == laneName }) {
+                            laneToOverwrite = laneName
+                            showLaneInput = false  // Close the input sheet first
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                showOverwriteConfirmation = true  // Then show confirmation
+                            }
+                        } else {
+                            timingModel.recordFinishAtTime(currentRaceTime, lane: laneName)
+                            showLaneInput = false
+                        }
                     }
                     .keyboardShortcut(.return)
                     .buttonStyle(.borderedProminent)
@@ -232,12 +272,40 @@ struct RaceTimelineView: View {
             .padding(30)
             .frame(width: 400)
         }
+        .alert("Overwrite Lane Time?", isPresented: $showOverwriteConfirmation) {
+            Button("Cancel", role: .cancel) {
+                laneToOverwrite = nil
+            }
+            Button("Overwrite", role: .destructive) {
+                if let lane = laneToOverwrite {
+                    // Remove the existing finish event for this lane
+                    timingModel.finishEvents.removeAll { $0.label == lane }
+                    // Add the new finish time
+                    timingModel.recordFinishAtTime(currentRaceTime, lane: lane)
+                    showLaneInput = false
+                    laneToOverwrite = nil
+                }
+            }
+        } message: {
+            if let lane = laneToOverwrite {
+                Text("\(lane) already has a recorded time. Do you want to overwrite it?")
+            }
+        }
+        .alert("Export Complete", isPresented: $showExportSuccess) {
+            Button("OK") { }
+        } message: {
+            Text("Image exported successfully to Desktop")
+        }
     }
 
     private func seekToRaceTime() {
         if isVideoAvailable {
             let videoTime = currentRaceTime - videoStartInRace
+            playerViewModel.isSeekingOutsideVideo = false
             playerViewModel.seek(to: videoTime, precise: true)
+        } else {
+            // We're outside the video range
+            playerViewModel.isSeekingOutsideVideo = true
         }
     }
 
@@ -246,5 +314,30 @@ struct RaceTimelineView: View {
         let secs = Int(seconds) % 60
         let millis = Int((seconds.truncatingRemainder(dividingBy: 1)) * 1000)
         return String(format: "%02d:%02d.%03d", minutes, secs, millis)
+    }
+
+    private func exportCurrentFrame() {
+        guard let videoURL = captureManager.lastRecordedURL else { return }
+
+        isExporting = true
+
+        let exporter = FrameExporter()
+        let videoTime = currentRaceTime - videoStartInRace
+
+        // Format filename with race name and time
+        let raceName = timingModel.sessionData?.raceName ?? "Race"
+        let timeString = formatTime(currentRaceTime).replacingOccurrences(of: ":", with: "-")
+        let fileName = "\(raceName)-\(timeString).jpg"
+
+        // Save to Desktop
+        let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        let outputURL = desktopURL.appendingPathComponent(fileName)
+
+        exporter.exportFrame(from: videoURL, at: videoTime, to: outputURL, zeroTolerance: true) { success in
+            DispatchQueue.main.async {
+                self.isExporting = false
+                self.showExportSuccess = success
+            }
+        }
     }
 }
