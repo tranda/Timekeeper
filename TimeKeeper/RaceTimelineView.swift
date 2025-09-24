@@ -280,24 +280,36 @@ struct RaceTimelineView: View {
                     .foregroundColor(.secondary)
 
                 VStack(spacing: 8) {
-                    ForEach(Array(timingModel.sessionData?.teamNames.enumerated() ?? [].enumerated()), id: \.offset) { index, name in
-                        Button(action: {
-                            selectedLane = String(index + 1)
-                        }) {
-                            HStack {
-                                Text(name)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                if selectedLane == String(index + 1) {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.accentColor)
+                    // Filter to only non-empty lanes
+                    let nonEmptyLanes = timingModel.sessionData?.teamNames.enumerated().compactMap { index, name in
+                        // Show lane if it has any name (including default "Lane X"), but not if empty
+                        (!name.isEmpty) ? (index: index, name: name) : nil
+                    } ?? []
+
+                    if nonEmptyLanes.isEmpty {
+                        Text("No lanes configured")
+                            .foregroundColor(.secondary)
+                            .padding()
+                    } else {
+                        ForEach(nonEmptyLanes, id: \.index) { item in
+                            Button(action: {
+                                selectedLane = String(item.index + 1)
+                            }) {
+                                HStack {
+                                    Text(item.name)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    if selectedLane == String(item.index + 1) {
+                                        Image(systemName: "checkmark")
+                                            .foregroundColor(.accentColor)
+                                    }
                                 }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(selectedLane == String(item.index + 1) ? Color.accentColor.opacity(0.1) : Color.clear)
+                                .cornerRadius(6)
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(selectedLane == String(index + 1) ? Color.accentColor.opacity(0.1) : Color.clear)
-                            .cornerRadius(6)
+                            .buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .frame(width: 250)
