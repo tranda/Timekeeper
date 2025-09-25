@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeKeeper Help</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #fafafa;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #007AFF;
+        }
+        h1 {
+            color: #007AFF;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        h2 {
+            color: #007AFF;
+            font-size: 1.8em;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        h3 {
+            color: #555;
+            font-size: 1.3em;
+            margin-top: 25px;
+            margin-bottom: 10px;
+        }
+        .shortcut-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+            background: white;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .shortcut-table th,
+        .shortcut-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        .shortcut-table th {
+            background-color: #007AFF;
+            color: white;
+            font-weight: 600;
+        }
+        .shortcut-table tr:last-child td {
+            border-bottom: none;
+        }
+        .shortcut-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        .key {
+            background-color: #f1f3f4;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            font-weight: bold;
+            color: #333;
+        }
+        .workflow {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 15px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .workflow ol {
+            padding-left: 20px;
+        }
+        .workflow li {
+            margin-bottom: 8px;
+        }
+        .note {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+        .tip {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            border-radius: 6px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>TimeKeeper Help</h1>
+        <p>Professional Race Timing with Video Review</p>
+    </div>
+
+    <h2>Keyboard Shortcuts</h2>
+    <p>TimeKeeper provides comprehensive keyboard shortcuts for efficient race timing operations:</p>
+
+    <h3>Race Control</h3>
+    <table class="shortcut-table">
+        <thead>
+            <tr>
+                <th>Shortcut</th>
+                <th>Action</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="key">SPACE</span></td>
+                <td>Record Video</td>
+                <td>Start/stop video recording (most accessible key for critical recording)</td>
+            </tr>
+            <tr>
+                <td><span class="key">ENTER</span></td>
+                <td>Start/Stop Race</td>
+                <td>Toggle race timing on/off</td>
+            </tr>
+            <tr>
+                <td><span class="key">ESC</span></td>
+                <td>Emergency Stop</td>
+                <td>Immediately stop both race timing and video recording</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Timeline Navigation (Video Review)</h3>
+    <table class="shortcut-table">
+        <thead>
+            <tr>
+                <th>Shortcut</th>
+                <th>Action</th>
+                <th>Precision</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="key">←</span> / <span class="key">→</span></td>
+                <td>Navigate timeline</td>
+                <td>±10ms (standard)</td>
+            </tr>
+            <tr>
+                <td><span class="key">⇧</span> + <span class="key">←</span> / <span class="key">→</span></td>
+                <td>Fine navigation</td>
+                <td>±1ms (precise)</td>
+            </tr>
+            <tr>
+                <td><span class="key">⌘</span> + <span class="key">←</span> / <span class="key">→</span></td>
+                <td>Coarse navigation</td>
+                <td>±100ms (quick)</td>
+            </tr>
+            <tr>
+                <td><span class="key">Home</span> / <span class="key">End</span></td>
+                <td>Jump to start/end</td>
+                <td>Video boundaries</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Finish Marking</h3>
+    <table class="shortcut-table">
+        <thead>
+            <tr>
+                <th>Shortcut</th>
+                <th>Action</th>
+                <th>Requirement</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="key">M</span></td>
+                <td>Add Marker</td>
+                <td>Lane must be selected first (1-9)</td>
+            </tr>
+            <tr>
+                <td><span class="key">Delete</span> / <span class="key">⌫</span></td>
+                <td>Remove last marker</td>
+                <td>Removes most recent finish marker</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Lane Management</h3>
+    <table class="shortcut-table">
+        <thead>
+            <tr>
+                <th>Shortcut</th>
+                <th>Action</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="key">1</span>-<span class="key">9</span></td>
+                <td>Select Lane</td>
+                <td>Choose active lane for marker placement</td>
+            </tr>
+            <tr>
+                <td><span class="key">D</span></td>
+                <td>Mark DNS</td>
+                <td>Did Not Start (selected lane)</td>
+            </tr>
+            <tr>
+                <td><span class="key">N</span></td>
+                <td>Mark DNF</td>
+                <td>Did Not Finish (selected lane)</td>
+            </tr>
+            <tr>
+                <td><span class="key">S</span></td>
+                <td>Mark DSQ</td>
+                <td>Disqualified (selected lane)</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h3>Quick Actions</h3>
+    <table class="shortcut-table">
+        <thead>
+            <tr>
+                <th>Shortcut</th>
+                <th>Action</th>
+                <th>Description</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><span class="key">⌘</span> + <span class="key">E</span></td>
+                <td>Export Frame</td>
+                <td>Export current video frame as JPEG</td>
+            </tr>
+            <tr>
+                <td><span class="key">⌘</span> + <span class="key">S</span></td>
+                <td>Save Session</td>
+                <td>Save current race timing data</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2>Typical Race Timing Workflow</h2>
+
+    <div class="workflow">
+        <h3>Setup Phase</h3>
+        <ol>
+            <li>Click <strong>"NEW RACE"</strong> and enter race name and team/lane names</li>
+            <li>Select camera from the dropdown menu</li>
+            <li>Choose output folder for recordings and data</li>
+        </ol>
+    </div>
+
+    <div class="workflow">
+        <h3>Race Timing</h3>
+        <ol>
+            <li>Press <span class="key">ENTER</span> to start race timing</li>
+            <li>Press <span class="key">SPACE</span> to begin video recording when competitors approach finish line</li>
+            <li>Press <span class="key">ENTER</span> to stop race timing when all competitors have finished</li>
+            <li>Recording automatically stops when race ends</li>
+        </ol>
+    </div>
+
+    <div class="workflow">
+        <h3>Video Review & Precise Timing</h3>
+        <ol>
+            <li>Use <span class="key">1</span>-<span class="key">9</span> to select a lane</li>
+            <li>Navigate video with <span class="key">←</span>/<span class="key">→</span> arrows</li>
+            <li>Use <span class="key">⇧</span> + arrows for frame-by-frame precision</li>
+            <li>Press <span class="key">M</span> to set finish marker at current position</li>
+            <li>Repeat for each lane</li>
+            <li>Press <span class="key">⌘</span> + <span class="key">E</span> to export finish line photo if needed</li>
+        </ol>
+    </div>
+
+    <div class="note">
+        <strong>Note:</strong> You must select a lane (1-9) before adding a marker with the M key. The selected lane is shown in the "Selected Lane" indicator on the left panel.
+    </div>
+
+    <div class="tip">
+        <strong>Tip:</strong> For the most accurate timing, record only the finish line area. Start recording just before the first competitor arrives and stop after the last competitor finishes.
+    </div>
+
+    <h2>Lane Status Management</h2>
+    <p>TimeKeeper supports standard race statuses:</p>
+    <ul>
+        <li><strong>Registered</strong> - Default status before race</li>
+        <li><strong>Finished</strong> - Competitor completed the race (set by adding markers)</li>
+        <li><strong>DNS</strong> - Did Not Start</li>
+        <li><strong>DNF</strong> - Did Not Finish</li>
+        <li><strong>DSQ</strong> - Disqualified</li>
+    </ul>
+
+    <h2>Video and Timing Synchronization</h2>
+    <p>TimeKeeper automatically synchronizes video timestamps with race timing for accurate post-race analysis. The timeline view shows:</p>
+    <ul>
+        <li>Race start and end markers</li>
+        <li>Video recording period</li>
+        <li>Individual finish markers for each lane</li>
+        <li>Precise timing down to millisecond accuracy</li>
+    </ul>
+
+    <h2>Data Export</h2>
+    <p>All race data is automatically saved as JSON files alongside video recordings. You can:</p>
+    <ul>
+        <li>Export individual finish line frames as high-quality JPEG images</li>
+        <li>Save complete race sessions with all timing data</li>
+        <li>Load previous sessions for review or correction</li>
+    </ul>
+
+    <div class="tip">
+        <strong>System Requirements:</strong> TimeKeeper requires macOS 13.0 (Ventura) or later and camera access permissions for video recording.
+    </div>
+</body>
+</html>

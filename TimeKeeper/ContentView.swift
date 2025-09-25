@@ -1,6 +1,7 @@
 import SwiftUI
 import AVKit
 import UniformTypeIdentifiers
+import Combine
 
 struct ContentView: View {
     @StateObject private var captureManager = CaptureManager()
@@ -14,6 +15,8 @@ struct ContentView: View {
     @State private var isExporting = false
     @State private var showExportSuccess = false
     @State private var syncToRaceTime = false
+    @State private var keyMonitor: Any? = nil
+    @State private var triggerLaneSelection = false
 
     var body: some View {
         HStack(spacing: 0) {
@@ -73,6 +76,80 @@ struct ContentView: View {
                     }
 
                     Spacer()
+                }
+
+                // Keyboard shortcuts help
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Keyboard Shortcuts")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        // Show ENTER only before race starts
+                        if timingModel.raceStartTime == nil && timingModel.isRaceInitialized {
+                            HStack {
+                                Text("ENTER")
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.gray.opacity(0.2))
+                                    .cornerRadius(4)
+                                Text("Start Race")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        // Show SPACE and ESC only during active race
+                        if timingModel.isRaceActive {
+                            HStack {
+                                Text("SPACE")
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.gray.opacity(0.2))
+                                    .cornerRadius(4)
+                                Text("Record")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            HStack {
+                                Text("ESC")
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.gray.opacity(0.2))
+                                    .cornerRadius(4)
+                                Text("Stop Race")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        if !timingModel.isRaceActive && timingModel.raceStartTime != nil {
+                            HStack {
+                                Text("M")
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.gray.opacity(0.2))
+                                    .cornerRadius(4)
+                                Text("Add Marker")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            HStack {
+                                Text("←→")
+                                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.gray.opacity(0.2))
+                                    .cornerRadius(4)
+                                Text("Navigate ±10ms")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
                 }
 
                 Spacer()
@@ -188,7 +265,8 @@ struct ContentView: View {
                     RaceTimelineView(
                         timingModel: timingModel,
                         captureManager: captureManager,
-                        playerViewModel: playerViewModel
+                        playerViewModel: playerViewModel,
+                        triggerLaneSelection: $triggerLaneSelection
                     )
                     .frame(height: 300)
                     .padding(.horizontal)
@@ -208,6 +286,9 @@ struct ContentView: View {
             captureManager.timingModel = timingModel
             playerViewModel.timingModel = timingModel
             timingModel.outputDirectory = captureManager.outputDirectory
+
+            // Set up keyboard monitoring
+            setupKeyboardMonitoring()
 
             // First refresh devices, then wait for them to be loaded
             captureManager.refreshDevices()
@@ -231,6 +312,13 @@ struct ContentView: View {
                     selectedDeviceID = preferredDevice.uniqueID
                     captureManager.selectDevice(preferredDevice)
                 }
+            }
+        }
+        .onDisappear {
+            // Clean up keyboard monitoring
+            if let monitor = keyMonitor {
+                NSEvent.removeMonitor(monitor)
+                keyMonitor = nil
             }
         }
     }
@@ -294,5 +382,221 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Keyboard Shortcuts
+    private func setupKeyboardMonitoring() {
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            return self.handleKeyDown(event)
+        }
+    }
+
+    private func handleKeyDown(_ event: NSEvent) -> NSEvent? {
+        let keyCode = event.keyCode
+        let modifierFlags = event.modifierFlags
+        let characters = event.charactersIgnoringModifiers?.lowercased() ?? ""
+
+        // Handle special keys first
+        switch keyCode {
+        case 49: // SPACE
+            handleRecordShortcut()
+            return nil // Consume the event
+
+        case 36: // RETURN
+            handleStartStopShortcut()
+            return nil
+
+        case 53: // ESCAPE
+            handleEmergencyStopShortcut()
+            return nil
+
+        case 123: // LEFT ARROW
+            handleTimelineNavigation(direction: .left, modifiers: modifierFlags)
+            return nil
+
+        case 124: // RIGHT ARROW
+            handleTimelineNavigation(direction: .right, modifiers: modifierFlags)
+            return nil
+
+        case 115: // HOME
+            handleTimelineJump(.start)
+            return nil
+
+        case 119: // END
+            handleTimelineJump(.end)
+            return nil
+
+
+        default:
+            break
+        }
+
+        // Handle character-based shortcuts
+        switch characters {
+        case "m":
+            handleOpenLaneSelectionShortcut()
+            return nil
+
+
+        case "e" where modifierFlags.contains(.command):
+            handleExportShortcut()
+            return nil
+
+        case "s" where modifierFlags.contains(.command):
+            handleSaveShortcut()
+            return nil
+
+
+        default:
+            break
+        }
+
+        // Don't consume the event if we didn't handle it
+        return event
+    }
+
+    // MARK: - Shortcut Handlers
+
+    private func handleRecordShortcut() {
+        // Only allow recording during active race, not after race is completed
+        guard timingModel.isRaceActive else { return }
+
+        // Delegate to RaceTimingPanel's record handling
+        if captureManager.selectedDevice != nil &&
+           timingModel.isRaceInitialized {
+
+            if captureManager.isRecording {
+                captureManager.stopRecording { _ in
+                    print("Stopped video recording via shortcut")
+                }
+            } else {
+                captureManager.startRecording(to: captureManager.outputDirectory) { success in
+                    if success {
+                        print("Started video recording via shortcut")
+                    }
+                }
+            }
+        }
+    }
+
+    private func handleStartStopShortcut() {
+        // Only allow during race setup (before race starts), not during or after race
+        guard timingModel.raceStartTime == nil,
+              timingModel.isRaceInitialized else { return }
+
+        // Start race (only if race hasn't started yet)
+        timingModel.startRace()
+    }
+
+    private func handleEmergencyStopShortcut() {
+        // Only allow emergency stop during active race
+        guard timingModel.isRaceActive else { return }
+
+        // Emergency stop - stop both race and recording immediately
+        timingModel.stopRace()
+        if captureManager.isRecording {
+            captureManager.stopRecording { _ in
+                print("Stopped race and recording via ESC key")
+            }
+        }
+    }
+
+    private enum TimelineDirection {
+        case left, right
+    }
+
+    private enum TimelineJump {
+        case start, end
+    }
+
+    private func handleTimelineNavigation(direction: TimelineDirection, modifiers: NSEvent.ModifierFlags) {
+        // Only work when race is completed (not active, has started, and has been stopped)
+        guard !timingModel.isRaceActive,
+              timingModel.raceStartTime != nil,
+              captureManager.lastRecordedURL != nil,
+              playerViewModel.player.currentItem != nil else { return }
+
+        let currentTime = playerViewModel.currentTime
+        var newTime: Double
+
+        if modifiers.contains(.shift) {
+            // Fine adjustment: ±1ms
+            newTime = direction == .left ? currentTime - 0.001 : currentTime + 0.001
+        } else if modifiers.contains(.command) {
+            // Coarse adjustment: ±100ms
+            newTime = direction == .left ? currentTime - 0.1 : currentTime + 0.1
+        } else {
+            // Normal adjustment: ±10ms
+            newTime = direction == .left ? currentTime - 0.01 : currentTime + 0.01
+        }
+
+        // Clamp to video bounds
+        if let duration = playerViewModel.player.currentItem?.duration,
+           CMTIME_IS_VALID(duration) {
+            let maxTime = CMTimeGetSeconds(duration)
+            newTime = max(0, min(newTime, maxTime))
+        } else {
+            newTime = max(0, newTime)
+        }
+
+        // Seek to new time
+        let seekTime = CMTime(seconds: newTime, preferredTimescale: 1000)
+        playerViewModel.player.seek(to: seekTime)
+        playerViewModel.currentTime = newTime
+    }
+
+    private func handleTimelineJump(_ jump: TimelineJump) {
+        // Only work when race is completed (not active, has started, and has been stopped)
+        guard !timingModel.isRaceActive,
+              timingModel.raceStartTime != nil,
+              captureManager.lastRecordedURL != nil,
+              let duration = playerViewModel.player.currentItem?.duration,
+              CMTIME_IS_VALID(duration) else { return }
+
+        let seekTime: CMTime
+        switch jump {
+        case .start:
+            seekTime = CMTime.zero
+        case .end:
+            seekTime = duration
+        }
+
+        playerViewModel.player.seek(to: seekTime)
+        playerViewModel.currentTime = CMTimeGetSeconds(seekTime)
+    }
+
+    private func handleOpenLaneSelectionShortcut() {
+        // Only work when race is completed (not active, has started, and has been stopped)
+        guard !timingModel.isRaceActive,
+              timingModel.raceStartTime != nil else { return }
+
+        // Trigger the lane selection dialog in RaceTimelineView
+        triggerLaneSelection = true
+    }
+
+    private func handleAddFinishShortcut() {
+        // This function is no longer used since M key now opens lane selection dialog
+        // The functionality is now handled through the RaceTimelineView dialog
+        print("handleAddFinishShortcut called - this should not happen")
+    }
+
+
+
+
+    private func handleExportShortcut() {
+        // Only export when race is completed and we have a frame to export
+        guard !timingModel.isRaceActive,
+              timingModel.raceStartTime != nil,
+              captureManager.lastRecordedURL != nil,
+              playerViewModel.player.currentItem != nil else { return }
+
+        // Use existing export functionality
+        exportCurrentFrame()
+    }
+
+    private func handleSaveShortcut() {
+        // Save current session
+        timingModel.saveCurrentSession()
+        print("Session saved via shortcut")
     }
 }

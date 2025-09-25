@@ -344,7 +344,7 @@ struct RaceTimingPanel: View {
                     }
                     .keyboardShortcut(.escape)
 
-                    Button("Save Finish") {
+                    Button("Save Marker") {
                         if let manualTime = manualTimeEntry {
                             let laneIndex = Int(selectedLane) ?? 1
                             let laneName = timingModel.sessionData?.teamNames[safe: laneIndex - 1] ?? "Lane \(selectedLane)"

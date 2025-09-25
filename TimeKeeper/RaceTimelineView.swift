@@ -5,6 +5,7 @@ struct RaceTimelineView: View {
     @ObservedObject var timingModel: RaceTimingModel
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var playerViewModel: PlayerViewModel
+    @Binding var triggerLaneSelection: Bool
 
     @State private var currentRaceTime: Double = 0
     @State private var isDragging = false
@@ -220,7 +221,7 @@ struct RaceTimelineView: View {
 
             // Quick Actions
             HStack(spacing: 20) {
-                Button("Add Finish Here") {
+                Button("Set Marker") {
                     // Simply use the current slider position (currentRaceTime)
                     // This is what the user has positioned on the timeline
                     let videoTime = isVideoAvailable ? (currentRaceTime - videoStartInRace) : nil
@@ -324,7 +325,7 @@ struct RaceTimelineView: View {
                     }
                     .keyboardShortcut(.escape)
 
-                    Button("Save Finish") {
+                    Button("Save Marker") {
                         let laneIndex = Int(selectedLane) ?? 1
                         let laneName = timingModel.sessionData?.teamNames[safe: laneIndex - 1] ?? "Lane \(selectedLane)"
                         // Calculate video time only if we're within video range
@@ -374,6 +375,12 @@ struct RaceTimelineView: View {
             Button("OK") { }
         } message: {
             Text("Image exported successfully to Desktop")
+        }
+        .onChange(of: triggerLaneSelection) { newValue in
+            if newValue {
+                showLaneInput = true
+                triggerLaneSelection = false // Reset the trigger
+            }
         }
     }
 
