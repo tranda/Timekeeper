@@ -207,11 +207,248 @@ struct ContentView: View {
                                                 .background(Color.black)
                                                 .aspectRatio(contentMode: .fit)  // Show full video with letterboxing
                                                 .cornerRadius(8)
+                                                .scaleEffect(playerViewModel.zoomScale)
+                                                .offset(playerViewModel.zoomOffset)
+                                                .clipped() // Clip zoomed content to frame bounds
+                                                .gesture(
+                                                    SimultaneousGesture(
+                                                        MagnificationGesture()
+                                                            .onChanged { scale in
+                                                                playerViewModel.setZoom(scale)
+                                                            },
+                                                        DragGesture()
+                                                            .onChanged { value in
+                                                                if playerViewModel.zoomScale > 1.0 {
+                                                                    playerViewModel.panVideo(by: CGSize(
+                                                                        width: value.translation.width * 0.5,
+                                                                        height: value.translation.height * 0.5
+                                                                    ))
+                                                                }
+                                                            }
+                                                    )
+                                                )
                                                 .onAppear {
                                                     if let url = captureManager.lastRecordedURL {
                                                         playerViewModel.loadVideo(url: url)
                                                     }
                                                 }
+
+                                            // Video controls overlay
+                                            ZStack {
+                                                // Zoom controls positioned to the right and vertically centered
+                                                HStack {
+                                                    Spacer()
+
+                                                    // Zoom controls (right side) - vertically centered with video
+                                                    VStack(spacing: 8) {
+                                                        Text("ZOOM")
+                                                            .foregroundColor(.white)
+                                                            .font(.caption2)
+                                                            .fontWeight(.semibold)
+
+                                                        // Vertical zoom slider - made taller with tick marks
+                                                        VStack(spacing: 4) {
+                                                            Text("5x")
+                                                                .foregroundColor(.white.opacity(0.7))
+                                                                .font(.caption2)
+
+                                                            ZStack {
+                                                                // Tick marks for zoom levels
+                                                                VStack(spacing: 0) {
+                                                                    ForEach([5.0, 4.0, 3.0, 2.0, 1.0], id: \.self) { zoomLevel in
+                                                                        HStack(spacing: 2) {
+                                                                            Rectangle()
+                                                                                .fill(Color.white.opacity(0.5))
+                                                                                .frame(width: 8, height: 1)
+                                                                            Text("\(Int(zoomLevel))x")
+                                                                                .foregroundColor(.white.opacity(0.6))
+                                                                                .font(.system(size: 8))
+                                                                        }
+                                                                        .frame(height: videoHeight / 5)
+                                                                    }
+                                                                }
+                                                                .frame(width: 30, height: videoHeight)
+
+                                                                Slider(value: Binding(
+                                                                    get: { playerViewModel.zoomScale },
+                                                                    set: { playerViewModel.setZoom($0) }
+                                                                ), in: 1.0...5.0, step: 0.1)
+                                                                .accentColor(.white)
+                                                                .frame(width: videoHeight)
+                                                                .rotationEffect(.degrees(-90))
+                                                                .frame(width: 20, height: videoHeight)
+                                                            }
+
+                                                            Text("1x")
+                                                                .foregroundColor(.white.opacity(0.7))
+                                                                .font(.caption2)
+                                                        }
+
+                                                        // 1x reset button
+                                                        Button(action: { playerViewModel.resetZoom() }) {
+                                                            Text("1x")
+                                                                .foregroundColor(.white)
+                                                                .font(.caption)
+                                                                .fontWeight(.semibold)
+                                                                .frame(width: 24, height: 20)
+                                                                .background(Color.blue.opacity(0.8))
+                                                                .cornerRadius(4)
+                                                        }
+                                                        .buttonStyle(.plain)
+                                                        .help("Reset to 1x (⌘+0)")
+
+                                                        // Current zoom display
+                                                        Text(String(format: "%.1fx", playerViewModel.zoomScale))
+                                                            .foregroundColor(.white)
+                                                            .font(.caption2)
+                                                    }
+                                                    .padding(12)
+                                                    .background(Color.black.opacity(0.7))
+                                                    .cornerRadius(8)
+                                                    .padding(.trailing, 8)
+                                                }
+
+                                                // Pan controls positioned at bottom center
+                                                VStack {
+                                                    Spacer()
+
+                                                // Pan controls (bottom center) - only show when zoomed
+                                                if playerViewModel.zoomScale > 1.0 {
+                                                    HStack {
+                                                        Spacer()
+
+                                                        VStack(spacing: 8) {
+                                                            Text("PAN")
+                                                                .foregroundColor(.white)
+                                                                .font(.caption2)
+                                                                .fontWeight(.semibold)
+
+                                                            VStack(spacing: 6) {
+                                                                // Up arrow
+                                                                Button(action: {
+                                                                    if !playerViewModel.isPanningLongerThanThreshold {
+                                                                        playerViewModel.panVideo(by: CGSize(width: 0, height: -20))
+                                                                    }
+                                                                }) {
+                                                                    Image(systemName: "chevron.up")
+                                                                        .foregroundColor(.white)
+                                                                        .font(.body)
+                                                                        .frame(width: 32, height: 24)
+                                                                        .background(Color.gray.opacity(0.3))
+                                                                        .cornerRadius(4)
+                                                                }
+                                                                .buttonStyle(.plain)
+                                                                .help("Pan Up (Hold for continuous)")
+                                                                .onLongPressGesture(minimumDuration: 0.2, maximumDistance: 10) {
+                                                                    // This fires when long press is detected
+                                                                } onPressingChanged: { pressing in
+                                                                    if pressing {
+                                                                        playerViewModel.startContinuousPan(direction: CGSize(width: 0, height: -5))
+                                                                    } else {
+                                                                        playerViewModel.stopContinuousPan()
+                                                                    }
+                                                                }
+
+                                                                HStack(spacing: 6) {
+                                                                    // Left arrow
+                                                                    Button(action: {
+                                                                        if !playerViewModel.isPanningLongerThanThreshold {
+                                                                            playerViewModel.panVideo(by: CGSize(width: -20, height: 0))
+                                                                        }
+                                                                    }) {
+                                                                        Image(systemName: "chevron.left")
+                                                                            .foregroundColor(.white)
+                                                                            .font(.body)
+                                                                            .frame(width: 24, height: 32)
+                                                                            .background(Color.gray.opacity(0.3))
+                                                                            .cornerRadius(4)
+                                                                    }
+                                                                    .buttonStyle(.plain)
+                                                                    .help("Pan Left (Hold for continuous)")
+                                                                    .onLongPressGesture(minimumDuration: 0.2, maximumDistance: 10) {
+                                                                        // This fires when long press is detected
+                                                                    } onPressingChanged: { pressing in
+                                                                        if pressing {
+                                                                            playerViewModel.startContinuousPan(direction: CGSize(width: -5, height: 0))
+                                                                        } else {
+                                                                            playerViewModel.stopContinuousPan()
+                                                                        }
+                                                                    }
+
+                                                                    // Center/reset pan button
+                                                                    Button(action: { playerViewModel.zoomOffset = .zero }) {
+                                                                        Image(systemName: "dot.circle")
+                                                                            .foregroundColor(.white)
+                                                                            .font(.body)
+                                                                            .frame(width: 24, height: 24)
+                                                                            .background(Color.blue.opacity(0.6))
+                                                                            .cornerRadius(4)
+                                                                    }
+                                                                    .buttonStyle(.plain)
+                                                                    .help("Center View")
+
+                                                                    // Right arrow
+                                                                    Button(action: {
+                                                                        if !playerViewModel.isPanningLongerThanThreshold {
+                                                                            playerViewModel.panVideo(by: CGSize(width: 20, height: 0))
+                                                                        }
+                                                                    }) {
+                                                                        Image(systemName: "chevron.right")
+                                                                            .foregroundColor(.white)
+                                                                            .font(.body)
+                                                                            .frame(width: 24, height: 32)
+                                                                            .background(Color.gray.opacity(0.3))
+                                                                            .cornerRadius(4)
+                                                                    }
+                                                                    .buttonStyle(.plain)
+                                                                    .help("Pan Right (Hold for continuous)")
+                                                                    .onLongPressGesture(minimumDuration: 0.2, maximumDistance: 10) {
+                                                                        // This fires when long press is detected
+                                                                    } onPressingChanged: { pressing in
+                                                                        if pressing {
+                                                                            playerViewModel.startContinuousPan(direction: CGSize(width: 5, height: 0))
+                                                                        } else {
+                                                                            playerViewModel.stopContinuousPan()
+                                                                        }
+                                                                    }
+                                                                }
+
+                                                                // Down arrow
+                                                                Button(action: {
+                                                                    if !playerViewModel.isPanningLongerThanThreshold {
+                                                                        playerViewModel.panVideo(by: CGSize(width: 0, height: 20))
+                                                                    }
+                                                                }) {
+                                                                    Image(systemName: "chevron.down")
+                                                                        .foregroundColor(.white)
+                                                                        .font(.body)
+                                                                        .frame(width: 32, height: 24)
+                                                                        .background(Color.gray.opacity(0.3))
+                                                                        .cornerRadius(4)
+                                                                }
+                                                                .buttonStyle(.plain)
+                                                                .help("Pan Down (Hold for continuous)")
+                                                                .onLongPressGesture(minimumDuration: 0.2, maximumDistance: 10) {
+                                                                    // This fires when long press is detected
+                                                                } onPressingChanged: { pressing in
+                                                                    if pressing {
+                                                                        playerViewModel.startContinuousPan(direction: CGSize(width: 0, height: 5))
+                                                                    } else {
+                                                                        playerViewModel.stopContinuousPan()
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        .padding(8)
+                                                        .background(Color.black.opacity(0.7))
+                                                        .cornerRadius(8)
+
+                                                        Spacer()
+                                                    }
+                                                    .padding(.bottom, 8)
+                                                }
+                                                }
+                                            }
 
                                             // Show overlay when seeking outside video range
                                             if playerViewModel.isSeekingOutsideVideo {
@@ -444,6 +681,18 @@ struct ContentView: View {
 
         case "s" where modifierFlags.contains(.command):
             handleSaveShortcut()
+            return nil
+
+        case "=" where modifierFlags.contains(.command), "+" where modifierFlags.contains(.command):
+            playerViewModel.zoomIn()
+            return nil
+
+        case "-" where modifierFlags.contains(.command):
+            playerViewModel.zoomOut()
+            return nil
+
+        case "0" where modifierFlags.contains(.command):
+            playerViewModel.resetZoom()
             return nil
 
 

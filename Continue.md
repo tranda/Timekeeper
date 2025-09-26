@@ -1,86 +1,56 @@
-# TimeKeeper Development Roadmap
+# Continue Tomorrow
 
-## Current Status
-TimeKeeper now has comprehensive lane status management with DNS/DNF/DSQ support, results table in the left panel, and clean timeline display showing only finished events with actual times.
+## Current Issue to Fix
 
-## Development Roadmap
+**Problem**: Local data update inconsistency when switching between races after submitting results.
 
-### Phase 1: User Experience Enhancement
-1. **Implement keyboard shortcuts for faster race timing operations**
-   - Quick lane selection shortcuts
-   - Rapid status changes (DNS/DNF/DSQ)
-   - Timeline navigation shortcuts
-   - Fast marker placement
-   - Export shortcuts
+**Details**:
+- When results are submitted to server for Race A, the internal race data is updated correctly
+- However, when user switches to Race B and then back to Race A, the results table may not reflect the previously submitted data
+- This suggests the internal data update mechanism (`updateInternalRaceData`) may have issues with:
+  1. Finding the correct race in the race plan array
+  2. Properly updating the lane data structure
+  3. Triggering UI refresh after internal data changes
 
-### Phase 2: Platform Connection Setup
-2. **Review existing platform API endpoints and authentication methods**
-   - Document available API endpoints
-   - Understand authentication flow
-   - Map data structures between TimeKeeper and platform
+**Current Implementation**:
+- Results submission calls `updateInternalRaceData()` on success
+- This method updates `availableRacePlan` with new lane times/statuses
+- Race selection triggers `loadSelectedRaceData()` which imports lane data into timing model
 
-3. **Add network layer to TimeKeeper for API communication**
-   - Create networking service classes
-   - Implement authentication handling
-   - Add error handling and retry logic
-   - Set up configuration for different environments
+**Suspected Issues**:
+1. Race ID matching might not be working correctly in `updateInternalRaceData`
+2. Lane data might not be persisting correctly in the updated race plan
+3. UI refresh might not be triggered when switching back to an updated race
 
-4. **Implement race plan download from platform**
-   - Download heat sheets and lane assignments
-   - Import competitor information
-   - Sync race schedules and event details
-   - Handle race plan updates
+**Next Steps**:
+1. Debug the `updateInternalRaceData` method - add logging to verify:
+   - Race is found correctly by ID
+   - Lane data is updated properly
+   - Updated race plan is saved correctly
+2. Test race switching scenario:
+   - Submit results for Race A
+   - Switch to Race B
+   - Switch back to Race A
+   - Verify results table shows submitted data
+3. Consider adding explicit race plan refresh or cache invalidation
 
-5. **Add competitor database integration**
-   - Store competitor names, times, rankings
-   - Link timing data to competitor profiles
-   - Handle competitor search and selection
-   - Manage competitor photo/info display
+## Recent Completed Work
 
-### Phase 3: Real-time Integration
-6. **Implement real-time results upload and synchronization**
-   - Upload finish times as they're recorded
-   - Sync status changes (DNS/DNF/DSQ) in real-time
-   - Handle conflict resolution for concurrent updates
-   - Implement offline mode with sync when reconnected
+✅ Event selection dropdown with public events API
+✅ Secure API key storage using Keychain
+✅ Race plan loading with event-based fetching
+✅ Single-race update API endpoint integration
+✅ Internal race data updates after submission
+✅ Auto-refresh of results table when race plans load
+✅ Event ID storage in session data
+✅ Build fixes and error handling
 
-7. **Add multi-race event handling**
-   - Support for heats, semifinals, finals structure
-   - Automatic advancement based on times/positions
-   - Heat progression rules and qualifying times
-   - Session management for multi-day events
+## Architecture Status
 
-### Phase 4: Live Operations & Broadcasting
-8. **Implement live results broadcasting to displays/websites**
-   - Real-time results streaming
-   - Integration with display systems
-   - WebSocket connections for live updates
-   - Mobile-friendly results viewing
+The app now has a complete race plan integration with:
+- Event management and selection
+- Race plan fetching and caching
+- Result submission with internal data sync
+- Reactive UI updates and auto-refresh
 
-9. **Add competition-wide leaderboards and standings display**
-   - Overall competition rankings
-   - Category/division leaderboards
-   - Team scoring and standings
-   - Historical performance tracking
-
-10. **Implement automated heat progression and advancement rules**
-    - Configurable advancement criteria
-    - Automatic heat sheet generation for next rounds
-    - Time standards and qualifying procedures
-    - Seeding algorithms for elimination rounds
-
-## Technical Architecture Notes
-- Network layer should be built with URLSession and Combine for reactive programming
-- Consider implementing Core Data for local competitor database caching
-- Use WebSocket for real-time updates where needed
-- Implement proper error handling and user feedback for network operations
-- Consider offline-first approach with sync capabilities
-
-## Integration Points
-- Existing platform API (already built)
-- Race timing data (current TimeKeeper format)
-- Video synchronization (current implementation)
-- Session data (JSON format, current implementation)
-
-## Next Immediate Task
-Start with **Phase 2: Platform Connection Setup** - Review existing platform API endpoints and authentication methods.
+Main remaining issue is the data consistency when switching between races after updates.

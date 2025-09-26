@@ -140,6 +140,9 @@ struct TimeKeeperApp: App {
         • ⌘+←/→ - Navigate ±100ms (coarse)
         • ⌘+E - Export current frame
         • ⌘+S - Save session
+        • ⌘++ - Zoom in video
+        • ⌘+- - Zoom out video
+        • ⌘+0 - Reset zoom
 
         WORKFLOW:
         1. Click NEW RACE and set up lanes

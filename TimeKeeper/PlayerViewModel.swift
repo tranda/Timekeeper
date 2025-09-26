@@ -8,6 +8,14 @@ class PlayerViewModel: ObservableObject {
     @Published var isPlaying = false
     @Published var isSeekingOutsideVideo = false
 
+    // Zoom controls
+    @Published var zoomScale: Double = 1.0
+    @Published var zoomOffset: CGSize = .zero
+
+    // Pan timer for continuous panning
+    private var panTimer: Timer?
+    private var panStartTime: Date?
+
     private var timeObserver: Any?
     private var statusObserver: AnyCancellable?
     private var rateObserver: AnyCancellable?
@@ -23,6 +31,7 @@ class PlayerViewModel: ObservableObject {
         if let observer = timeObserver {
             player.removeTimeObserver(observer)
         }
+        stopContinuousPan()
     }
 
     private func setupObservers() {
@@ -92,5 +101,50 @@ class PlayerViewModel: ObservableObject {
         let previousTime = max(0, currentTime - frameDuration)
 
         seek(to: previousTime, precise: true)
+    }
+
+    // MARK: - Zoom Controls
+
+    func zoomIn() {
+        zoomScale = min(zoomScale * 1.25, 5.0) // Max zoom 5x
+    }
+
+    func zoomOut() {
+        zoomScale = max(zoomScale / 1.25, 1.0) // Min zoom 1x (original size)
+    }
+
+    func resetZoom() {
+        zoomScale = 1.0
+        zoomOffset = .zero
+    }
+
+    func setZoom(_ scale: Double) {
+        zoomScale = max(1.0, min(scale, 5.0))
+    }
+
+    func panVideo(by offset: CGSize) {
+        let maxOffset: Double = 200 // Limit pan distance
+        let newX = max(-maxOffset, min(maxOffset, zoomOffset.width + offset.width))
+        let newY = max(-maxOffset, min(maxOffset, zoomOffset.height + offset.height))
+        zoomOffset = CGSize(width: newX, height: newY)
+    }
+
+    func startContinuousPan(direction: CGSize) {
+        stopContinuousPan() // Stop any existing pan
+        panStartTime = Date()
+        panTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
+            self.panVideo(by: direction)
+        }
+    }
+
+    func stopContinuousPan() {
+        panTimer?.invalidate()
+        panTimer = nil
+        panStartTime = nil
+    }
+
+    var isPanningLongerThanThreshold: Bool {
+        guard let startTime = panStartTime else { return false }
+        return Date().timeIntervalSince(startTime) > 0.1
     }
 }
