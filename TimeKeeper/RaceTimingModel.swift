@@ -31,6 +31,9 @@ struct FinishEvent: Identifiable, Codable {
 struct SessionData: Codable {
     var raceName: String
     var teamNames: [String]
+    var eventId: Int?  // ID of the event from API (nil for custom races)
+    var raceId: Int?  // ID of the race from API (nil for custom races)
+    var originalRaceTitle: String?  // Original race title from API (for discipline info)
     var raceStartWallclock: Date?
     var videoStartWallclock: Date?
     var videoStopWallclock: Date?
@@ -157,16 +160,19 @@ class RaceTimingModel: ObservableObject {
         sessionData = SessionData()
     }
 
-    func initializeNewRace(name: String, teamNames: [String]) {
+    func initializeNewRace(name: String, teamNames: [String], eventId: Int? = nil, raceId: Int? = nil, originalRaceTitle: String? = nil) {
         resetRace()
-        // Ensure sessionData exists and set the race name and teams
+        // Ensure sessionData exists and set the race name, teams, event ID, and race ID
         if sessionData == nil {
             sessionData = SessionData()
         }
         sessionData?.raceName = name
         sessionData?.teamNames = teamNames
+        sessionData?.eventId = eventId
+        sessionData?.raceId = raceId
+        sessionData?.originalRaceTitle = originalRaceTitle
         isRaceInitialized = true
-        print("Initialized new race: \(name) with \(teamNames.count) teams")
+        print("Initialized new race: \(name) with \(teamNames.count) teams, event ID: \(eventId?.description ?? "none"), race ID: \(raceId?.description ?? "none")")
     }
 
     func setVideoStartTime(_ date: Date) {

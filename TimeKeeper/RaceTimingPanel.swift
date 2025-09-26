@@ -1,9 +1,11 @@
 import SwiftUI
+import Combine
 
 struct RaceTimingPanel: View {
     @ObservedObject var timingModel: RaceTimingModel
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var playerViewModel: PlayerViewModel
+    @StateObject private var racePlanService = RacePlanService.shared
     @State private var showResetConfirmation = false
     @State private var showLaneInput = false
     @State private var selectedLane = "1"
@@ -13,6 +15,10 @@ struct RaceTimingPanel: View {
     @State private var showNewRaceSheet = false
     @State private var newRaceName = ""
     @State private var newTeamNames = (1...MAX_LANES).map { "Lane \($0)" }
+    @State private var showResultsAlert = false
+    @State private var resultsAlertTitle = ""
+    @State private var resultsAlertMessage = ""
+    @State private var resultsAlertIsSuccess = false
 
     var body: some View {
         VStack(spacing: 20) {
@@ -37,6 +43,97 @@ struct RaceTimingPanel: View {
             .buttonStyle(.plain)
             .disabled(timingModel.isRaceActive)
             .padding(.horizontal)
+
+            // Event Selection Section
+            if !racePlanService.availableEvents.isEmpty {
+                VStack(spacing: 8) {
+                    HStack {
+                        Text("Event:")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 80, alignment: .leading)
+
+                        Picker("", selection: Binding(
+                            get: { racePlanService.selectedEvent?.id ?? 0 },
+                            set: { eventId in
+                                if let event = racePlanService.availableEvents.first(where: { $0.id == eventId }) {
+                                    racePlanService.selectEvent(event)
+                                    // Auto-load race plans for the new event
+                                    if racePlanService.hasAPIKey() {
+                                        racePlanService.fetchRacePlans()
+                                    }
+                                }
+                            }
+                        )) {
+                            ForEach(racePlanService.availableEvents) { event in
+                                Text("\(event.name) \(String(event.year)) - \(event.location)")
+                                    .tag(event.id)
+                            }
+                        }
+                        .pickerStyle(.menu)
+                        .font(.system(size: 18, weight: .bold))
+                        .disabled(timingModel.isRaceActive)
+
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(8)
+                .padding(.horizontal)
+            }
+
+            // Race Plan Selection Section (only show if race plan is available)
+            if let racePlan = racePlanService.availableRacePlan, !racePlan.races.isEmpty {
+                VStack(spacing: 8) {
+                    // Race Selection
+                    HStack {
+                        Text("Race:")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 80, alignment: .leading)
+
+                        Picker("", selection: Binding(
+                            get: { racePlanService.selectedRace?.id ?? 0 },
+                            set: { raceId in
+                                if let race = racePlan.races.first(where: { $0.id == raceId }) {
+                                    racePlanService.selectRace(race)
+                                    // Auto-load race when selected
+                                    if !timingModel.isRaceActive {
+                                        loadSelectedRaceData()
+                                    }
+                                }
+                            }
+                        )) {
+                            Text("Select Race")
+                                .font(.system(size: 16, weight: .medium))
+                                .tag(0)
+                            ForEach(racePlan.races) { race in
+                                Text("\(race.raceNumber) - \(formatRaceTitle(race.title)) (\(race.stage))")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .tag(race.id)
+                            }
+                        }
+                        .frame(width: 400)
+                        .disabled(timingModel.isRaceActive)
+
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 8)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(8)
+                .padding(.horizontal)
+
+                if let errorMessage = racePlanService.errorMessage {
+                    Text(errorMessage)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                        .padding(.horizontal)
+                }
+            }
 
             // Main controls in horizontal layout
             HStack(alignment: .top, spacing: 30) {
@@ -304,6 +401,23 @@ struct RaceTimingPanel: View {
                 }
             }
             .frame(maxWidth: .infinity)
+
+            // Send Results button (only show if race is initialized)
+            if timingModel.isRaceInitialized {
+                Button(action: sendRaceResults) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.green)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                        Text("SEND RESULTS")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal)
+            }
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -400,6 +514,19 @@ struct RaceTimingPanel: View {
                 Text("\(lane) already has a recorded time. Do you want to overwrite it?")
             }
         }
+        .alert(resultsAlertTitle, isPresented: $showResultsAlert) {
+            Button("OK") { }
+        } message: {
+            Text(resultsAlertMessage)
+        }
+        .onReceive(racePlanService.$shouldRefreshRaceData) { shouldRefresh in
+            if shouldRefresh && racePlanService.selectedRace != nil {
+                // Refresh the race data to show updated results from race plan
+                loadSelectedRaceData()
+                // Reset the trigger
+                racePlanService.shouldRefreshRaceData = false
+            }
+        }
         .sheet(isPresented: $showNewRaceSheet) {
             VStack(spacing: 20) {
                 Text("Setup New Race")
@@ -438,7 +565,7 @@ struct RaceTimingPanel: View {
                     .keyboardShortcut(.escape)
 
                     Button("Start New Race") {
-                        timingModel.initializeNewRace(name: newRaceName, teamNames: newTeamNames)
+                        timingModel.initializeNewRace(name: newRaceName, teamNames: newTeamNames, eventId: racePlanService.selectedEvent?.id)
                         // Clear the recorded video and reset capture manager state
                         captureManager.lastRecordedURL = nil
                         captureManager.videoStartTime = nil
@@ -454,6 +581,84 @@ struct RaceTimingPanel: View {
             .padding(40)
             .frame(width: 450)
         }
+    }
+
+    private func loadSelectedRaceData() {
+        guard let selectedRace = racePlanService.selectedRace else { return }
+
+        // Set race name from selected race
+        newRaceName = "\(selectedRace.raceNumber) - \(selectedRace.title)"
+
+        // Clear existing team names and populate from race data
+        newTeamNames = (1...MAX_LANES).map { _ in "" } // Start with empty strings instead of "Lane X"
+
+        // Populate team names from race lanes
+        for lane in selectedRace.lanes {
+            if lane.lane >= 1 && lane.lane <= MAX_LANES {
+                newTeamNames[lane.lane - 1] = lane.team
+            }
+        }
+
+        // Initialize the race with the loaded data
+        timingModel.initializeNewRace(name: newRaceName, teamNames: newTeamNames, eventId: racePlanService.selectedEvent?.id, raceId: selectedRace.id, originalRaceTitle: selectedRace.title)
+
+        // Import any existing finish times and statuses from the API data
+        for lane in selectedRace.lanes {
+            // Handle different lane statuses
+            if let status = lane.status {
+                switch status {
+                case "FINISHED":
+                    if let timeString = lane.time,
+                       let raceTime = parseTimeString(timeString) {
+                        // Add the existing finish time to the timing model
+                        timingModel.recordFinishAtTime(raceTime, lane: lane.team)
+                    }
+                case "DNF":
+                    timingModel.recordLaneStatus(lane.team, status: .dnf)
+                case "DSQ":
+                    timingModel.recordLaneStatus(lane.team, status: .dsq)
+                case "DNS":
+                    timingModel.recordLaneStatus(lane.team, status: .dns)
+                default:
+                    // For other statuses like "SCHEDULED", keep as registered
+                    break
+                }
+            }
+        }
+
+        // Clear the recorded video and reset capture manager state
+        captureManager.lastRecordedURL = nil
+        captureManager.videoStartTime = nil
+        captureManager.videoStopTime = nil
+        playerViewModel.player.replaceCurrentItem(with: nil)
+        playerViewModel.isSeekingOutsideVideo = false
+    }
+
+    // Helper function to parse time string like "00:58.120" to seconds
+    private func parseTimeString(_ timeString: String) -> Double? {
+        let components = timeString.split(separator: ":")
+        guard components.count == 2 else { return nil }
+
+        let minutes = Double(components[0]) ?? 0
+        let seconds = Double(components[1]) ?? 0
+
+        return minutes * 60 + seconds
+    }
+
+    // Helper function to format race titles by adding spaces between words
+    private func formatRaceTitle(_ title: String) -> String {
+        return title
+            .replacingOccurrences(of: "Small", with: "Small ")
+            .replacingOccurrences(of: "Premier", with: "Premier ")
+            .replacingOccurrences(of: "Senior", with: "Senior ")
+            .replacingOccurrences(of: "Mixed", with: "Mixed ")
+            .replacingOccurrences(of: "Women", with: "Women ")
+            .replacingOccurrences(of: "Men", with: "Men ")
+            .replacingOccurrences(of: "200m", with: "200m")
+            .replacingOccurrences(of: "500m", with: "500m")
+            // Clean up any double spaces
+            .replacingOccurrences(of: "  ", with: " ")
+            .trimmingCharacters(in: .whitespaces)
     }
 
     private func handleStartPress() {
@@ -487,6 +692,32 @@ struct RaceTimingPanel: View {
                 if success {
                     print("Started video recording")
                 }
+            }
+        }
+    }
+
+    private func sendRaceResults() {
+        guard let sessionData = timingModel.sessionData else {
+            print("No session data to send")
+            return
+        }
+
+        // Call the API to submit race results
+        racePlanService.submitRaceResults(sessionData: sessionData, finishEvents: timingModel.finishEvents) { result in
+            switch result {
+            case .success(let message):
+                print("✅ SUCCESS: \(message)")
+                resultsAlertTitle = "Success"
+                resultsAlertMessage = "Race results submitted successfully!"
+                resultsAlertIsSuccess = true
+                showResultsAlert = true
+
+            case .failure(let error):
+                print("❌ ERROR: \(error.localizedDescription)")
+                resultsAlertTitle = "Error"
+                resultsAlertMessage = "Failed to submit race results:\n\(error.localizedDescription)"
+                resultsAlertIsSuccess = false
+                showResultsAlert = true
             }
         }
     }
