@@ -35,4 +35,4 @@ Examples:
 - New feature: 0.5.1 → 0.6.0
 - Major rewrite: 0.6.0 → 1.0.0 (only when user explicitly requests major version increase)
 
-Current version: 0.6.0
+Current version: 0.5.1
