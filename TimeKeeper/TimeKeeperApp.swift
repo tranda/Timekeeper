@@ -135,6 +135,7 @@ struct TimeKeeperApp: App {
 
         After Race (Video Review):
         • M - Open lane selection dialog
+        • F - Toggle photo finish overlay
         • ←/→ - Navigate timeline ±10ms
         • ⇧+←/→ - Navigate ±1ms (fine)
         • ⌘+←/→ - Navigate ±100ms (coarse)
@@ -150,8 +151,9 @@ struct TimeKeeperApp: App {
         3. Press SPACE to record finish area
         4. Press ESC to stop race & recording
         5. Use M to add finish markers
-        6. Navigate video with arrow keys
-        7. Export frames or save session
+        6. Use F for photo finish analysis
+        7. Navigate video with arrow keys
+        8. Export frames or save session
         """
     }
 }

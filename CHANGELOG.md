@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2025-01-26
+
+### Added
+- **Photo Finish Analysis Tools**: Enhanced video inspection for precise race timing
+  - Angled finish line overlay with adjustable positioning for camera perspective
+  - Draggable handles for precise finish line placement
+  - Support for non-perpendicular camera angles
+  - "F" key toggle for finish line overlay
+  - Integration with existing export system (⌘+E)
+
+### Improved
+- Optimized finish line proportions (80% of video frame height with 10% margins)
+- Removed unnecessary UI overlays for cleaner interface
+- Enhanced handle positioning for better usability
+- Race time display integration with existing timing model
+
+### Fixed
+- Reserved keyword conflict in Swift code (`extension` variable renamed)
+- Proper optional handling for race time conversion methods
+
 ## [0.5.0] - 2025-01-26
 
 ### Added

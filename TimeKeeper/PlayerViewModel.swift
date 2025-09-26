@@ -12,6 +12,11 @@ class PlayerViewModel: ObservableObject {
     @Published var zoomScale: Double = 1.0
     @Published var zoomOffset: CGSize = .zero
 
+    // Photo finish overlay
+    @Published var showPhotoFinishOverlay = true
+    @Published var finishLineTopX: Double = 0.5 // Normalized X position for top of line (0.0 to 1.0)
+    @Published var finishLineBottomX: Double = 0.5 // Normalized X position for bottom of line (0.0 to 1.0)
+
     // Pan timer for continuous panning
     private var panTimer: Timer?
     private var panStartTime: Date?
@@ -146,5 +151,26 @@ class PlayerViewModel: ObservableObject {
     var isPanningLongerThanThreshold: Bool {
         guard let startTime = panStartTime else { return false }
         return Date().timeIntervalSince(startTime) > 0.1
+    }
+
+    // MARK: - Photo Finish Overlay
+
+    func togglePhotoFinishOverlay() {
+        showPhotoFinishOverlay.toggle()
+    }
+
+    func setFinishLineTopX(_ x: Double) {
+        finishLineTopX = max(0.0, min(1.0, x))
+    }
+
+    func setFinishLineBottomX(_ x: Double) {
+        finishLineBottomX = max(0.0, min(1.0, x))
+    }
+
+    func moveFinishLineHorizontally(by deltaX: Double) {
+        let newTopX = finishLineTopX + deltaX
+        let newBottomX = finishLineBottomX + deltaX
+        finishLineTopX = max(0.0, min(1.0, newTopX))
+        finishLineBottomX = max(0.0, min(1.0, newBottomX))
     }
 }

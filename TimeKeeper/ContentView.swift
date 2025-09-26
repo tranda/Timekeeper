@@ -450,6 +450,66 @@ struct ContentView: View {
                                                 }
                                             }
 
+                                            // Photo finish overlay
+                                            if playerViewModel.showPhotoFinishOverlay {
+                                                GeometryReader { geometry in
+                                                    ZStack {
+                                                        // Finish line - slightly smaller than video frame
+                                                        Path { path in
+                                                            let margin = geometry.size.height * 0.1 // 10% margin
+                                                            let topX = geometry.size.width * playerViewModel.finishLineTopX
+                                                            let topY: CGFloat = margin // 10% from top
+                                                            let bottomX = geometry.size.width * playerViewModel.finishLineBottomX
+                                                            let bottomY = geometry.size.height - margin // 10% from bottom
+
+                                                            path.move(to: CGPoint(x: topX, y: topY))
+                                                            path.addLine(to: CGPoint(x: bottomX, y: bottomY))
+                                                        }
+                                                        .stroke(Color.red, lineWidth: 3)
+                                                        .gesture(
+                                                            DragGesture()
+                                                                .onChanged { value in
+                                                                    let deltaX = value.translation.width / geometry.size.width
+                                                                    playerViewModel.moveFinishLineHorizontally(by: deltaX * 0.01)
+                                                                }
+                                                        )
+
+                                                        // Top handle - positioned at top end of shortened line
+                                                        Circle()
+                                                            .fill(Color.red)
+                                                            .frame(width: 12, height: 12)
+                                                            .position(
+                                                                x: geometry.size.width * playerViewModel.finishLineTopX,
+                                                                y: geometry.size.height * 0.1 // 10% from top
+                                                            )
+                                                            .gesture(
+                                                                DragGesture()
+                                                                    .onChanged { value in
+                                                                        let newX = value.location.x / geometry.size.width
+                                                                        playerViewModel.setFinishLineTopX(newX)
+                                                                    }
+                                                            )
+
+                                                        // Bottom handle - positioned at bottom end of shortened line
+                                                        Circle()
+                                                            .fill(Color.red)
+                                                            .frame(width: 12, height: 12)
+                                                            .position(
+                                                                x: geometry.size.width * playerViewModel.finishLineBottomX,
+                                                                y: geometry.size.height * 0.9 // 10% from bottom
+                                                            )
+                                                            .gesture(
+                                                                DragGesture()
+                                                                    .onChanged { value in
+                                                                        let newX = value.location.x / geometry.size.width
+                                                                        playerViewModel.setFinishLineBottomX(newX)
+                                                                    }
+                                                            )
+
+                                                    }
+                                                }
+                                            }
+
                                             // Show overlay when seeking outside video range
                                             if playerViewModel.isSeekingOutsideVideo {
                                                 ZStack {
@@ -603,6 +663,18 @@ struct ContentView: View {
         return String(format: "%02d:%02d.%03d", minutes, secs, millis)
     }
 
+    private func formatRaceTime(_ videoTime: Double) -> String {
+        // Convert video time to race time
+        if let raceTime = timingModel.raceTimeForVideoTime(videoTime) {
+            let minutes = Int(raceTime) / 60
+            let secs = Int(raceTime) % 60
+            let millis = Int((raceTime.truncatingRemainder(dividingBy: 1)) * 1000)
+            return String(format: "%02d:%02d.%03d", minutes, secs, millis)
+        } else {
+            return "Before race start"
+        }
+    }
+
     private func loadLastClip() {
         if let lastURL = captureManager.lastRecordedURL {
             recordedVideoURL = lastURL
@@ -674,6 +746,9 @@ struct ContentView: View {
             handleOpenLaneSelectionShortcut()
             return nil
 
+        case "f":
+            handlePhotoFinishShortcut()
+            return nil
 
         case "e" where modifierFlags.contains(.command):
             handleExportShortcut()
@@ -821,6 +896,17 @@ struct ContentView: View {
 
         // Trigger the lane selection dialog in RaceTimelineView
         triggerLaneSelection = true
+    }
+
+    private func handlePhotoFinishShortcut() {
+        // Only work when race is completed (not active, has started, and has been stopped)
+        guard !timingModel.isRaceActive,
+              timingModel.raceStartTime != nil,
+              captureManager.lastRecordedURL != nil,
+              playerViewModel.player.currentItem != nil else { return }
+
+        // Toggle photo finish overlay
+        playerViewModel.togglePhotoFinishOverlay()
     }
 
     private func handleAddFinishShortcut() {
