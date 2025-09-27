@@ -331,7 +331,7 @@ struct ContentView: View {
                                                     .padding(12)
                                                     .background(Color.black.opacity(0.7))
                                                     .cornerRadius(8)
-                                                    .padding(.trailing, 8)
+                                                    .padding(.trailing, -50)
                                                 }
 
                                                 // Pan controls positioned at bottom center
@@ -471,7 +471,7 @@ struct ContentView: View {
 
                                                         Spacer()
                                                     }
-                                                    .padding(.bottom, 8)
+                                                    .padding(.bottom, -50)
                                                 }
                                                 }
                                             }
