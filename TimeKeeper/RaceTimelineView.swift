@@ -221,7 +221,7 @@ struct RaceTimelineView: View {
 
             // Quick Actions
             HStack(spacing: 20) {
-                Button("Set Marker") {
+                Button("Set Marker (M)") {
                     // Simply use the current slider position (currentRaceTime)
                     // This is what the user has positioned on the timeline
                     let videoTime = isVideoAvailable ? (currentRaceTime - videoStartInRace) : nil

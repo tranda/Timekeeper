@@ -6,7 +6,6 @@ struct RaceTimingPanel: View {
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var playerViewModel: PlayerViewModel
     @StateObject private var racePlanService = RacePlanService.shared
-    @State private var showResetConfirmation = false
     @State private var showLaneInput = false
     @State private var selectedLane = "1"
     @State private var manualTimeEntry: Double?
@@ -231,25 +230,6 @@ struct RaceTimingPanel: View {
                     }
                 }
                 .frame(maxWidth: .infinity)
-
-                // OPTIONS Section
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Options")
-                        .font(.headline)
-
-                    // Auto-start video disabled - only record finish line
-                    // Toggle("Auto-start video", isOn: $timingModel.autoStartRecording)
-                    //     .toggleStyle(.checkbox)
-
-                    Button("Reset") {
-                        showResetConfirmation = true
-                    }
-                    .buttonStyle(.bordered)
-                    .disabled(!timingModel.isRaceActive && timingModel.finishEvents.isEmpty)
-
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
             }
 
             Divider()
@@ -423,6 +403,8 @@ struct RaceTimingPanel: View {
                 .buttonStyle(.plain)
                 .padding(.horizontal)
             }
+
+            Spacer()
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -489,14 +471,6 @@ struct RaceTimingPanel: View {
             }
             .padding(30)
             .frame(width: 400)
-        }
-        .alert("Reset Race Data?", isPresented: $showResetConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Reset", role: .destructive) {
-                timingModel.resetRace()
-            }
-        } message: {
-            Text("This will clear all race timing data and finish events.")
         }
         .alert("Overwrite Lane Time?", isPresented: $showOverwriteConfirmation) {
             Button("Cancel", role: .cancel) {

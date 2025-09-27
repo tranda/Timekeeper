@@ -102,7 +102,6 @@ struct ContentView: View {
                     Spacer()
                 }
 
-
                 Spacer()
             }
             .frame(minWidth: 600, idealWidth: 700, maxWidth: 800)
