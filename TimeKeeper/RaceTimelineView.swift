@@ -238,7 +238,8 @@ struct RaceTimelineView: View {
                     // Show lane selection dialog
                     showLaneInput = true
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
 
                 if !timingModel.finishEvents.isEmpty {
                     Menu("Jump to marker") {
