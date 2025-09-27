@@ -5,7 +5,15 @@ class CaptureManager: NSObject, ObservableObject {
     @Published var availableDevices: [AVCaptureDevice] = []
     @Published var selectedDevice: AVCaptureDevice?
     @Published var isRecording = false
-    @Published var outputDirectory: URL? = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+    @Published var outputDirectory: URL? {
+        didSet {
+            // Save to UserDefaults whenever the output directory changes
+            if let url = outputDirectory {
+                UserDefaults.standard.set(url.path, forKey: "outputDirectory")
+                print("💾 Saved output directory: \(url.path)")
+            }
+        }
+    }
     @Published var lastRecordedURL: URL?
     @Published var isSessionRunning = false
     @Published var captureSession: AVCaptureSession?
@@ -16,14 +24,33 @@ class CaptureManager: NSObject, ObservableObject {
     // Add a serial queue for session operations
     private let sessionQueue = DispatchQueue(label: "com.timekeeper.sessionQueue")
 
-    var videoStartTime: Date?
-    var videoStopTime: Date?
+    @Published var videoStartTime: Date?
+    @Published var videoStopTime: Date?
     var timingModel: RaceTimingModel?
     private var recordButtonClickTime: Date?  // Track when record button was clicked
 
 
     override init() {
         super.init()
+
+        // Load saved output directory from UserDefaults
+        if let savedPath = UserDefaults.standard.string(forKey: "outputDirectory") {
+            let savedURL = URL(fileURLWithPath: savedPath)
+            // Verify the directory still exists
+            if FileManager.default.fileExists(atPath: savedPath) {
+                outputDirectory = savedURL
+                print("📂 Loaded saved output directory: \(savedPath)")
+            } else {
+                print("⚠️ Saved output directory no longer exists: \(savedPath)")
+                // Fallback to Desktop
+                outputDirectory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+            }
+        } else {
+            // Default to Desktop
+            outputDirectory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
+            print("📂 Using default output directory: Desktop")
+        }
+
         // Don't refresh devices here - let ContentView do it after setup
     }
 
@@ -342,10 +369,11 @@ extension CaptureManager: AVCaptureFileOutputRecordingDelegate {
                 self.timingModel?.setVideoStopTime(self.videoStopTime!)
 
                 let outputFolder = self.outputDirectory ?? outputFileURL.deletingLastPathComponent()
-                let raceName = self.timingModel?.sessionData?.raceName ?? "Race"
-                let sessionFileName = "\(raceName).json"
-                let sessionURL = outputFolder.appendingPathComponent(sessionFileName)
-                self.timingModel?.saveSession(to: sessionURL)
+                // Session will be saved manually via Save button
+                // let raceName = self.timingModel?.sessionData?.raceName ?? "Race"
+                // let sessionFileName = "\(raceName).json"
+                // let sessionURL = outputFolder.appendingPathComponent(sessionFileName)
+                // self.timingModel?.saveSession(to: sessionURL)
 
                 self.stopRecordingCompletion?(outputFileURL)
             }

@@ -115,8 +115,8 @@ struct ContentView: View {
                 // Video section
                 GeometryReader { geometry in
                     VStack(spacing: 10) {
-                        // Show camera preview only when race is active or not yet started
-                        if captureManager.captureSession != nil && (timingModel.isRaceActive || timingModel.raceStartTime == nil) {
+                        // Show camera preview only when NOT in review mode
+                        if captureManager.captureSession != nil && !isReviewMode {
                             VStack(spacing: 5) {
                                 Text("Live Camera")
                                     .font(.caption)
@@ -138,8 +138,8 @@ struct ContentView: View {
                             }
                         }
 
-                        // Show recorded video player when we have a recording to review
-                        if !timingModel.isRaceActive && captureManager.lastRecordedURL != nil {
+                        // Show recorded video player when in review mode
+                        if isReviewMode {
                             VStack(spacing: 5) {
                                 Text("Recorded Video")
                                     .font(.caption)
@@ -160,6 +160,7 @@ struct ContentView: View {
                                                 .background(Color.black)
                                                 .aspectRatio(contentMode: .fit)  // Show full video with letterboxing
                                                 .cornerRadius(8)
+                                                .focusable(false)  // Disable keyboard focus and shortcuts
                                                 .scaleEffect(playerViewModel.zoomScale)
                                                 .offset(playerViewModel.zoomOffset)
                                                 .clipped() // Clip zoomed content to frame bounds
@@ -528,8 +529,8 @@ struct ContentView: View {
                 // Add flexible space between video and timeline
                 Spacer()
 
-                // Show race timeline after race is stopped (in fixed height area)
-                if !timingModel.isRaceActive && timingModel.raceStartTime != nil {
+                // Show race timeline only in review mode
+                if isReviewMode {
                     RaceTimelineView(
                         timingModel: timingModel,
                         captureManager: captureManager,

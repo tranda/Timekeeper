@@ -26,19 +26,40 @@ struct RaceTimelineView: View {
     }
 
     var videoStartInRace: Double {
+        // Use videoStartInRace from session data if available (for manual timing)
+        if let videoStartInRace = timingModel.sessionData?.videoStartInRace,
+           videoStartInRace > 0 {
+            let result = videoStartInRace  // Positive because video started after race began
+            print("🐛 Timeline: videoStartInRace = \(result) (using videoStartInRace: \(videoStartInRace))")
+            return result
+        }
+
+        // Fallback to wallclock calculation
         guard let videoStart = captureManager.videoStartTime,
-              let raceStart = timingModel.raceStartTime else { return 0 }
-        return max(0, videoStart.timeIntervalSince(raceStart))
+              let raceStart = timingModel.raceStartTime else {
+            print("🐛 Timeline: Missing timing data - videoStart: \(captureManager.videoStartTime?.description ?? "nil"), raceStart: \(timingModel.raceStartTime?.description ?? "nil")")
+            return 0
+        }
+        let result = videoStart.timeIntervalSince(raceStart)  // Allow negative values
+        print("🐛 Timeline: videoStartInRace = \(result) (videoStart: \(videoStart), raceStart: \(raceStart))")
+        return result
     }
 
     var videoEndInRace: Double {
         guard let videoStop = captureManager.videoStopTime,
-              let raceStart = timingModel.raceStartTime else { return raceEndTime }
-        return videoStop.timeIntervalSince(raceStart)
+              let raceStart = timingModel.raceStartTime else {
+            print("🐛 Timeline: Missing end timing data - videoStop: \(captureManager.videoStopTime?.description ?? "nil"), raceStart: \(timingModel.raceStartTime?.description ?? "nil")")
+            return raceEndTime
+        }
+        let result = videoStop.timeIntervalSince(raceStart)
+        print("🐛 Timeline: videoEndInRace = \(result) (videoStop: \(videoStop), raceStart: \(raceStart))")
+        return result
     }
 
     var isVideoAvailable: Bool {
-        return currentRaceTime >= videoStartInRace && currentRaceTime <= videoEndInRace && captureManager.lastRecordedURL != nil
+        let available = currentRaceTime >= videoStartInRace && currentRaceTime <= videoEndInRace && captureManager.lastRecordedURL != nil
+        print("🐛 Timeline: isVideoAvailable = \(available) (currentRaceTime: \(currentRaceTime), videoStart: \(videoStartInRace), videoEnd: \(videoEndInRace), hasURL: \(captureManager.lastRecordedURL != nil))")
+        return available
     }
 
     var body: some View {

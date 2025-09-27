@@ -37,17 +37,18 @@ struct SessionData: Codable {
     var raceStartWallclock: Date?
     var videoStartWallclock: Date?
     var videoStopWallclock: Date?
-    var raceStartInVideoSeconds: Double
+    var videoStartInRace: Double
     var finishEvents: [FinishEvent]
     var notes: String
     var recordingStartupDelay: Double  // Delay between record button and actual video start
     var exportedImages: [String]  // Array of exported image file paths
     var selectedImagesForSending: Set<String>  // Set of selected image paths for sending
+    var videoFilePath: String?  // Path to the recorded video file for review mode
 
     init() {
         self.raceName = "Race"
         self.teamNames = (1...MAX_LANES).map { "Lane \($0)" }
-        self.raceStartInVideoSeconds = 0
+        self.videoStartInRace = 0
         self.finishEvents = []
         self.notes = ""
         self.recordingStartupDelay = 0
@@ -122,8 +123,7 @@ class RaceTimingModel: ObservableObject {
         print("    Race time: \(String(format: "%02d:%02d.%03d", Int(time) / 60, Int(time) % 60, Int((time.truncatingRemainder(dividingBy: 1)) * 1000)))")
         print("    Video time: \(videoTimeStr)")
 
-        // Save session.json after adding finish marker
-        saveCurrentSession()
+        // Session will be saved manually via Save button
     }
 
     func recordLaneStatus(_ lane: String, status: LaneStatus) {
@@ -140,8 +140,7 @@ class RaceTimingModel: ObservableObject {
         print("    Lane: \(lane)")
         print("    Status: \(status.rawValue)")
 
-        // Save session.json after adding status
-        saveCurrentSession()
+        // Session will be saved manually via Save button
     }
 
     func stopRace() {
@@ -183,32 +182,32 @@ class RaceTimingModel: ObservableObject {
 
     func setVideoStartTime(_ date: Date) {
         sessionData?.videoStartWallclock = date
-        updateRaceStartInVideo()
+        updateVideoStartInRace()
     }
 
     func setVideoStopTime(_ date: Date) {
         sessionData?.videoStopWallclock = date
     }
 
-    private func updateRaceStartInVideo() {
+    private func updateVideoStartInRace() {
         guard let raceStart = sessionData?.raceStartWallclock,
               let videoStart = sessionData?.videoStartWallclock else {
-            sessionData?.raceStartInVideoSeconds = 0
+            sessionData?.videoStartInRace = 0
             return
         }
 
-        sessionData?.raceStartInVideoSeconds = raceStart.timeIntervalSince(videoStart)
+        sessionData?.videoStartInRace = videoStart.timeIntervalSince(raceStart)
     }
 
     func videoTimeForRaceTime(_ raceTime: Double) -> Double {
-        let raceStartInVideo = sessionData?.raceStartInVideoSeconds ?? 0
-        return max(0, raceStartInVideo) + raceTime
+        let videoStartInRace = sessionData?.videoStartInRace ?? 0
+        return max(0, raceTime - videoStartInRace)
     }
 
     func raceTimeForVideoTime(_ videoTime: Double) -> Double? {
-        guard let raceStartInVideo = sessionData?.raceStartInVideoSeconds,
-              raceStartInVideo >= 0 else { return nil }
-        return videoTime - raceStartInVideo
+        guard let videoStartInRace = sessionData?.videoStartInRace,
+              videoStartInRace >= 0 else { return nil }
+        return videoTime + videoStartInRace
     }
 
     func addExportedImage(_ imagePath: String) {
