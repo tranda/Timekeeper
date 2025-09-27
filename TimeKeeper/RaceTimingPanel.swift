@@ -5,6 +5,7 @@ struct RaceTimingPanel: View {
     @ObservedObject var timingModel: RaceTimingModel
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var playerViewModel: PlayerViewModel
+    @Binding var isReviewMode: Bool
     @StateObject private var racePlanService = RacePlanService.shared
     @State private var showLaneInput = false
     @State private var selectedLane = "1"
@@ -117,6 +118,19 @@ struct RaceTimingPanel: View {
                         .frame(width: 400)
                         .disabled(timingModel.isRaceActive)
 
+                        Button(action: {
+                            isReviewMode.toggle()
+                        }) {
+                            Text(isReviewMode ? "LIVE" : "REVIEW")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 80, height: 35)
+                                .background(isReviewMode ? Color.orange : Color.green)
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                        .help(isReviewMode ? "Switch to live race mode" : "Switch to review mode for editing times")
+
                         Spacer()
                     }
                 }
@@ -151,8 +165,8 @@ struct RaceTimingPanel: View {
                             }
                         }
                         .buttonStyle(.plain)
-                        .disabled(!timingModel.isRaceInitialized || (timingModel.raceStartTime != nil && !timingModel.isRaceActive))
-                        .opacity((timingModel.isRaceInitialized && (timingModel.raceStartTime == nil || timingModel.isRaceActive)) ? 1.0 : 0.5)
+                        .disabled(!timingModel.isRaceInitialized || (timingModel.raceStartTime != nil && !timingModel.isRaceActive) || isReviewMode)
+                        .opacity((timingModel.isRaceInitialized && (timingModel.raceStartTime == nil || timingModel.isRaceActive) && !isReviewMode) ? 1.0 : 0.5)
                     } else {
                         Button(action: handleStopPress) {
                             ZStack {
@@ -166,6 +180,8 @@ struct RaceTimingPanel: View {
                             }
                         }
                         .buttonStyle(.plain)
+                        .disabled(isReviewMode)
+                        .opacity(isReviewMode ? 0.5 : 1.0)
                     }
 
                     Text(timingModel.formattedElapsedTime)
@@ -205,8 +221,8 @@ struct RaceTimingPanel: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .disabled(captureManager.selectedDevice == nil || (!timingModel.isRaceInitialized || (timingModel.raceStartTime != nil && !timingModel.isRaceActive)))
-                    .opacity((captureManager.selectedDevice != nil && timingModel.isRaceInitialized && (timingModel.raceStartTime == nil || timingModel.isRaceActive)) ? 1.0 : 0.5)
+                    .disabled(captureManager.selectedDevice == nil || (!timingModel.isRaceInitialized || (timingModel.raceStartTime != nil && !timingModel.isRaceActive)) || isReviewMode)
+                    .opacity((captureManager.selectedDevice != nil && timingModel.isRaceInitialized && (timingModel.raceStartTime == nil || timingModel.isRaceActive) && !isReviewMode) ? 1.0 : 0.5)
 
                     HStack {
                         if captureManager.isRecording {
@@ -236,8 +252,19 @@ struct RaceTimingPanel: View {
 
             // Race Results Table
             VStack(alignment: .leading, spacing: 10) {
-                Text("Race Results")
-                    .font(.headline)
+                HStack {
+                    Text("Race Results")
+                        .font(.headline)
+
+                    if isReviewMode {
+                        Text("(REVIEW MODE - Times Editable)")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .fontWeight(.medium)
+                    }
+
+                    Spacer()
+                }
 
                 if timingModel.isRaceInitialized {
                     // Table Header
@@ -274,99 +301,9 @@ struct RaceTimingPanel: View {
                     .background(Color.gray.opacity(0.1))
 
                     ScrollView {
-                        VStack(spacing: 2) {
+                        LazyVStack(spacing: 2) {
                             ForEach(Array(timingModel.sessionData?.teamNames.enumerated() ?? [].enumerated()), id: \.offset) { index, teamName in
-                                let laneNumber = index + 1
-                                let finishEvent = timingModel.finishEvents.first { $0.label == teamName }
-                                let position = finishEvent != nil ? calculatePosition(for: finishEvent!, in: timingModel.finishEvents) : nil
-
-                                HStack(spacing: 0) {
-                                    Text("\(laneNumber)")
-                                        .font(.system(size: 14))
-                                        .frame(width: 50, alignment: .leading)
-
-                                    Text(teamName)
-                                        .font(.system(size: 14))
-                                        .frame(width: 120, alignment: .leading)
-
-                                    if let event = finishEvent, event.status == .finished {
-                                        Text(formatRaceTime(event.tRace))
-                                            .font(.system(size: 14, design: .monospaced))
-                                            .frame(width: 100, alignment: .leading)
-                                    } else {
-                                        Text("--:--")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(.secondary)
-                                            .frame(width: 100, alignment: .leading)
-                                    }
-
-                                    // Status dropdown
-                                    Menu {
-                                        Button("Registered") {
-                                            timingModel.recordLaneStatus(teamName, status: .registered)
-                                        }
-
-                                        Button("Finished") {
-                                            // Do nothing - times are set via timeline
-                                        }
-                                        .disabled(true)
-
-                                        Divider()
-
-                                        Button("DNS - Did Not Start") {
-                                            timingModel.recordLaneStatus(teamName, status: .dns)
-                                        }
-
-                                        Button("DNF - Did Not Finish") {
-                                            timingModel.recordLaneStatus(teamName, status: .dnf)
-                                        }
-
-                                        Button("DSQ - Disqualified") {
-                                            timingModel.recordLaneStatus(teamName, status: .dsq)
-                                        }
-
-                                        Divider()
-
-                                        Button("Clear") {
-                                            timingModel.finishEvents.removeAll { $0.label == teamName }
-                                            timingModel.sessionData?.finishEvents.removeAll { $0.label == teamName }
-                                            timingModel.saveCurrentSession()
-                                        }
-                                    } label: {
-                                        HStack(spacing: 4) {
-                                            if let event = finishEvent {
-                                                Text(event.status.rawValue)
-                                                    .foregroundColor(textColorForStatus(event.status))
-                                            } else {
-                                                Text("Registered")
-                                                    .foregroundColor(textColorForStatus(.registered))
-                                            }
-                                            Image(systemName: "chevron.down")
-                                                .font(.caption2)
-                                        }
-                                        .frame(width: 110, alignment: .leading)
-                                    }
-                                    .menuStyle(.borderlessButton)
-                                    .frame(width: 120, alignment: .leading)
-
-                                    if let event = finishEvent, event.status == .finished {
-                                        Text(position != nil ? "\(position!)" : "-")
-                                            .font(.system(size: 14))
-                                            .fontWeight(position == 1 ? .bold : .regular)
-                                            .foregroundColor(position == 1 ? .yellow : .primary)
-                                            .frame(width: 40, alignment: .leading)
-                                    } else {
-                                        Text("-")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(.secondary)
-                                            .frame(width: 40, alignment: .leading)
-                                    }
-
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 4)
-                                .background(index % 2 == 0 ? Color.clear : Color.gray.opacity(0.05))
+                                raceResultRow(index: index, teamName: teamName)
                             }
                         }
                     }
@@ -560,6 +497,164 @@ struct RaceTimingPanel: View {
             .padding(40)
             .frame(width: 450)
         }
+    }
+
+    @ViewBuilder
+    private func raceResultRow(index: Int, teamName: String) -> some View {
+        let laneNumber = index + 1
+        let finishEvent = timingModel.finishEvents.first { $0.label == teamName }
+        let position = finishEvent != nil ? calculatePosition(for: finishEvent!, in: timingModel.finishEvents) : nil
+
+        HStack(spacing: 0) {
+            Text("\(laneNumber)")
+                .font(.system(size: 14))
+                .frame(width: 50, alignment: .leading)
+
+            Text(teamName)
+                .font(.system(size: 14))
+                .frame(width: 120, alignment: .leading)
+
+            Group {
+                if isReviewMode {
+                    EditableTimeField(
+                        time: finishEvent?.tRace,
+                        onTimeChange: { newTime in
+                            if let event = finishEvent {
+                                updateFinishEventTime(event: event, newTime: newTime)
+                            } else {
+                                // Create a new finish event for this lane
+                                createFinishEventForLane(teamName: teamName, time: newTime)
+                            }
+                        }
+                    )
+                    .frame(width: 100, alignment: .leading)
+                } else {
+                    // In live mode, show read-only time display
+                    if let event = finishEvent, event.status == .finished {
+                        Text(formatRaceTime(event.tRace))
+                            .font(.system(size: 14, design: .monospaced))
+                            .frame(width: 100, alignment: .leading)
+                    } else {
+                        Text("--:--")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                            .frame(width: 100, alignment: .leading)
+                    }
+                }
+            }
+
+            statusMenu(for: teamName, finishEvent: finishEvent)
+
+            positionText(for: finishEvent, position: position)
+
+            Spacer()
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .background(index % 2 == 0 ? Color.clear : Color.gray.opacity(0.05))
+    }
+
+    @ViewBuilder
+    private func statusMenu(for teamName: String, finishEvent: FinishEvent?) -> some View {
+        Menu {
+            Button("Registered") {
+                timingModel.recordLaneStatus(teamName, status: .registered)
+            }
+
+            Button("Finished") {
+                // Do nothing - times are set via timeline
+            }
+            .disabled(true)
+
+            Divider()
+
+            Button("DNS - Did Not Start") {
+                timingModel.recordLaneStatus(teamName, status: .dns)
+            }
+
+            Button("DNF - Did Not Finish") {
+                timingModel.recordLaneStatus(teamName, status: .dnf)
+            }
+
+            Button("DSQ - Disqualified") {
+                timingModel.recordLaneStatus(teamName, status: .dsq)
+            }
+
+            Divider()
+
+            Button("Clear") {
+                timingModel.finishEvents.removeAll { $0.label == teamName }
+                timingModel.sessionData?.finishEvents.removeAll { $0.label == teamName }
+                timingModel.saveCurrentSession()
+            }
+        } label: {
+            HStack(spacing: 4) {
+                if let event = finishEvent {
+                    Text(event.status.rawValue)
+                        .foregroundColor(textColorForStatus(event.status))
+                } else {
+                    Text("Registered")
+                        .foregroundColor(textColorForStatus(.registered))
+                }
+                Image(systemName: "chevron.down")
+                    .font(.caption2)
+            }
+            .frame(width: 110, alignment: .leading)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 120, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private func positionText(for finishEvent: FinishEvent?, position: Int?) -> some View {
+        if let event = finishEvent, event.status == .finished {
+            Text(position != nil ? "\(position!)" : "-")
+                .font(.system(size: 14))
+                .fontWeight(position == 1 ? .bold : .regular)
+                .foregroundColor(position == 1 ? .yellow : .primary)
+                .frame(width: 40, alignment: .leading)
+        } else {
+            Text("-")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .frame(width: 40, alignment: .leading)
+        }
+    }
+
+    private func updateFinishEventTime(event: FinishEvent, newTime: Double) {
+        // Update the finish event with new time and set status to finished
+        print("🔄 Attempting to update finish event for \(event.label): \(event.tRace) -> \(newTime)")
+
+        if let index = timingModel.finishEvents.firstIndex(where: { $0.id == event.id }) {
+            let oldTime = timingModel.finishEvents[index].tRace
+            let oldStatus = timingModel.finishEvents[index].status
+
+            timingModel.finishEvents[index].tRace = newTime
+            timingModel.finishEvents[index].status = .finished
+
+            // Also update session data
+            if let sessionIndex = timingModel.sessionData?.finishEvents.firstIndex(where: { $0.id == event.id }) {
+                timingModel.sessionData?.finishEvents[sessionIndex].tRace = newTime
+                timingModel.sessionData?.finishEvents[sessionIndex].status = .finished
+                print("📝 Updated existing finish event for \(event.label): time \(oldTime) -> \(newTime), status \(oldStatus) -> finished")
+            } else {
+                print("⚠️ Could not find event in session data to update")
+            }
+
+            timingModel.saveCurrentSession()
+        } else {
+            print("⚠️ Could not find finish event with ID \(event.id) to update")
+        }
+    }
+
+    private func createFinishEventForLane(teamName: String, time: Double) {
+        // Remove any existing status-only entry for this lane first
+        timingModel.finishEvents.removeAll { $0.label == teamName }
+        timingModel.sessionData?.finishEvents.removeAll { $0.label == teamName }
+
+        // Create a new finish event for this lane
+        print("🆕 Creating new finish event for \(teamName) with time \(time)")
+        timingModel.recordFinishAtTime(time, lane: teamName, videoTime: nil, status: .finished)
     }
 
     private func loadSelectedRaceData() {
@@ -759,6 +854,126 @@ struct RaceTimingPanel: View {
             return .orange
         case .dsq:
             return .red
+        }
+    }
+}
+
+struct EditableTimeField: View {
+    let time: Double?
+    let onTimeChange: (Double) -> Void
+
+    @State private var isEditing = false
+    @State private var editText = ""
+    @FocusState private var isTextFieldFocused: Bool
+
+    var body: some View {
+        Group {
+            if isEditing {
+                TextField("", text: $editText)
+                    .font(.system(size: 14, design: .monospaced))
+                    .textFieldStyle(.plain)
+                    .focused($isTextFieldFocused)
+                    .onSubmit {
+                        saveTime()
+                    }
+                    .onExitCommand {
+                        cancelEdit()
+                    }
+                    .onChange(of: isTextFieldFocused) { focused in
+                        // Save when field loses focus
+                        if !focused && isEditing {
+                            saveTime()
+                        }
+                    }
+            } else {
+                let displayText: String = {
+                    if let timeValue = time {
+                        return formatRaceTimeHelper(timeValue)
+                    } else {
+                        return "--:--.---"
+                    }
+                }()
+
+                Text(displayText)
+                    .font(.system(size: 14, design: .monospaced))
+                    .foregroundColor(time != nil ? .primary : .secondary)
+                    .onTapGesture {
+                        startEditing()
+                    }
+                    .help("Tap to edit time")
+            }
+        }
+    }
+
+    private func startEditing() {
+        if let timeValue = time {
+            editText = formatRaceTimeHelper(timeValue)
+        } else {
+            editText = ""
+        }
+        isEditing = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            isTextFieldFocused = true
+        }
+    }
+
+    private func cancelEdit() {
+        isEditing = false
+        editText = ""
+        isTextFieldFocused = false
+    }
+
+    private func saveTime() {
+        if let newTime = parseTimeString(editText) {
+            print("🕒 Saving time: \(editText) -> \(newTime) seconds")
+            onTimeChange(newTime)
+        } else {
+            print("⚠️ Could not parse time: '\(editText)'")
+        }
+        isEditing = false
+        editText = ""
+        isTextFieldFocused = false
+    }
+
+    private func formatRaceTimeHelper(_ seconds: Double) -> String {
+        let minutes = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        let millis = Int((seconds.truncatingRemainder(dividingBy: 1)) * 1000)
+        return String(format: "%02d:%02d.%03d", minutes, secs, millis)
+    }
+
+    private func parseTimeString(_ timeString: String) -> Double? {
+        // Handle formats like "mm:ss.fff" or "ss.fff"
+        let trimmed = timeString.trimmingCharacters(in: .whitespaces)
+
+        guard !trimmed.isEmpty else {
+            print("⚠️ Empty time string")
+            return nil
+        }
+
+        if trimmed.contains(":") {
+            // Format: mm:ss.fff
+            let components = trimmed.split(separator: ":")
+            guard components.count == 2 else {
+                print("⚠️ Invalid time format with colon: '\(trimmed)' - expected mm:ss.fff")
+                return nil
+            }
+
+            let minutes = Double(components[0]) ?? 0
+            let seconds = Double(components[1]) ?? 0
+            let result = minutes * 60 + seconds
+
+            print("🕒 Parsed time '\(trimmed)' as \(minutes) min + \(seconds) sec = \(result) total seconds")
+            return result
+        } else {
+            // Format: ss.fff (just seconds)
+            if let result = Double(trimmed) {
+                print("🕒 Parsed time '\(trimmed)' as \(result) seconds")
+                return result
+            } else {
+                print("⚠️ Could not parse '\(trimmed)' as number")
+                return nil
+            }
         }
     }
 }

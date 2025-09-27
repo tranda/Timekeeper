@@ -14,10 +14,10 @@ enum LaneStatus: String, Codable {
 
 struct FinishEvent: Identifiable, Codable {
     let id: String
-    let tRace: Double  // Time in race (from race start)
+    var tRace: Double  // Time in race (from race start) - make mutable for editing
     let tVideo: Double? // Time in video (from video start) - optional for backwards compatibility
     let label: String
-    let status: LaneStatus
+    var status: LaneStatus  // Make mutable for editing
 
     init(tRace: Double, tVideo: Double? = nil, label: String = "Lane ?", status: LaneStatus = .finished) {
         self.id = UUID().uuidString

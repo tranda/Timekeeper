@@ -41,12 +41,13 @@ struct ContentView: View {
     @State private var syncToRaceTime = false
     @State private var keyMonitor: Any? = nil
     @State private var triggerLaneSelection = false
+    @State private var isReviewMode = false
 
     var body: some View {
         HStack(spacing: 0) {
             // Left side - Controls
             VStack(alignment: .leading, spacing: 20) {
-                RaceTimingPanel(timingModel: timingModel, captureManager: captureManager, playerViewModel: playerViewModel)
+                RaceTimingPanel(timingModel: timingModel, captureManager: captureManager, playerViewModel: playerViewModel, isReviewMode: $isReviewMode)
 
                 Divider()
 
@@ -753,7 +754,9 @@ struct ContentView: View {
 
     private func handleRecordShortcut() {
         // Only allow recording during active race, not after race is completed
-        guard timingModel.isRaceActive else { return }
+        // Also disable in review mode
+        guard timingModel.isRaceActive,
+              !isReviewMode else { return }
 
         // Delegate to RaceTimingPanel's record handling
         if captureManager.selectedDevice != nil &&
@@ -775,8 +778,10 @@ struct ContentView: View {
 
     private func handleStartStopShortcut() {
         // Only allow during race setup (before race starts), not during or after race
+        // Also disable in review mode
         guard timingModel.raceStartTime == nil,
-              timingModel.isRaceInitialized else { return }
+              timingModel.isRaceInitialized,
+              !isReviewMode else { return }
 
         // Start race (only if race hasn't started yet)
         timingModel.startRace()
@@ -784,7 +789,9 @@ struct ContentView: View {
 
     private func handleEmergencyStopShortcut() {
         // Only allow emergency stop during active race
-        guard timingModel.isRaceActive else { return }
+        // Also disable in review mode
+        guard timingModel.isRaceActive,
+              !isReviewMode else { return }
 
         // Emergency stop - stop both race and recording immediately
         timingModel.stopRace()
