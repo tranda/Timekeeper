@@ -271,7 +271,14 @@ class RaceTimingModel: ObservableObject {
             if let raceStop = raceStopTime {
                 raceElapsedTime = raceStop.timeIntervalSince(raceStart)
             } else {
-                raceElapsedTime = Date().timeIntervalSince(raceStart)
+                // For loaded sessions without stop time, use race duration from finish events
+                let maxFinishTime = loadedSession.finishEvents.map { $0.tRace }.max() ?? 0
+                if maxFinishTime > 0 {
+                    raceElapsedTime = maxFinishTime
+                } else {
+                    // Fallback: don't use current time for old sessions
+                    raceElapsedTime = 0
+                }
             }
         }
     }
