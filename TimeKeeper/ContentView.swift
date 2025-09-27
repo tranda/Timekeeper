@@ -3,6 +3,30 @@ import AVKit
 import UniformTypeIdentifiers
 import Combine
 
+// Custom AVPlayerView without controls
+struct AVPlayerView: NSViewRepresentable {
+    let player: AVPlayer?
+
+    func makeNSView(context: Context) -> AVPlayerView_Internal {
+        let view = AVPlayerView_Internal()
+        view.player = player
+        view.controlsStyle = .none
+        view.videoGravity = .resizeAspect
+        return view
+    }
+
+    func updateNSView(_ nsView: AVPlayerView_Internal, context: Context) {
+        nsView.player = player
+    }
+}
+
+class AVPlayerView_Internal: AVKit.AVPlayerView {
+    override func awakeFromNib() {
+        super.awakeFromNib()
+        self.controlsStyle = .none
+    }
+}
+
 struct ContentView: View {
     @StateObject private var captureManager = CaptureManager()
     @StateObject private var playerViewModel = PlayerViewModel()
@@ -193,16 +217,18 @@ struct ContentView: View {
                                 Text("Recorded Video")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
-                                GeometryReader { geometry in
-                                    // Landscape video (16:9 aspect ratio) - match live preview format
-                                    let maxWidth = min(geometry.size.width * 0.9, 800)
-                                    let videoHeight = maxWidth * (9.0 / 16.0)
-                                    let videoWidth = maxWidth
-
+                                GeometryReader { outerGeometry in
                                     HStack {
                                         Spacer()
-                                        ZStack {
-                                            VideoPlayer(player: playerViewModel.player)
+                                        VStack {
+                                            Spacer()
+                                            // Container view that's 90% of parent size
+                                            GeometryReader { geometry in
+                                            let videoWidth = geometry.size.width
+                                            let videoHeight = geometry.size.height
+
+                                            ZStack {
+                                            AVPlayerView(player: playerViewModel.player)
                                                 .frame(width: videoWidth, height: videoHeight)
                                                 .background(Color.black)
                                                 .aspectRatio(contentMode: .fit)  // Show full video with letterboxing
@@ -311,8 +337,8 @@ struct ContentView: View {
                                                 // Pan controls positioned at bottom center
                                                 VStack {
                                                     Spacer()
-
-                                                // Pan controls (bottom center) - only show when zoomed
+                                                    Spacer()
+                                                // Pan controls (pushed down more) - only show when zoomed
                                                 if playerViewModel.zoomScale > 1.0 {
                                                     HStack {
                                                         Spacer()
@@ -506,6 +532,16 @@ struct ContentView: View {
                                                                     }
                                                             )
 
+                                                        // Debug quad at bottom left of VideoPlayer frame
+                                                        // TODO: Re-enable for debugging coordinate alignment
+                                                        // Rectangle()
+                                                        //     .fill(Color.green)
+                                                        //     .frame(width: 20, height: 20)
+                                                        //     .position(
+                                                        //         x: 10, // 10px from left edge
+                                                        //         y: videoHeight - 10 // 10px from bottom of video area
+                                                        //     )
+
                                                     }
                                                 }
                                             }
@@ -529,6 +565,10 @@ struct ContentView: View {
                                                 }
                                                 .frame(width: videoWidth, height: videoHeight)
                                             }
+                                        }
+                                        }
+                                        .frame(width: outerGeometry.size.width * 0.9, height: outerGeometry.size.height * 0.9)
+                                            Spacer()
                                         }
                                         Spacer()
                                     }
@@ -556,6 +596,10 @@ struct ContentView: View {
                     }
                 }
                 .frame(maxHeight: .infinity)
+                Spacer().frame(height: 100)
+
+                // Add flexible space between video and timeline
+                Spacer()
 
                 // Show race timeline after race is stopped (in fixed height area)
                 if !timingModel.isRaceActive && timingModel.raceStartTime != nil {

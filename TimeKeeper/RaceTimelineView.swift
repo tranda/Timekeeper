@@ -472,16 +472,69 @@ struct RaceTimelineView: View {
         // Format filename with race name and time
         let raceName = timingModel.sessionData?.raceName ?? "Race"
         let timeString = formatTime(currentRaceTime).replacingOccurrences(of: ":", with: "-")
-        let fileName = "\(raceName)-\(timeString).jpg"
 
-        // Save to Desktop
-        let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-        let outputURL = desktopURL.appendingPathComponent(fileName)
+        // Check if photo finish overlay is active
+        if playerViewModel.showPhotoFinishOverlay {
+            let fileName = "\(raceName)-photo_finish-\(timeString).jpg"
 
-        exporter.exportFrame(from: videoURL, at: videoTime, to: outputURL, zeroTolerance: true) { success in
-            DispatchQueue.main.async {
-                self.isExporting = false
-                self.showExportSuccess = success
+            // Save to Desktop
+            let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            let outputURL = desktopURL.appendingPathComponent(fileName)
+
+            // Get actual video dimensions
+            guard let currentItem = playerViewModel.player.currentItem,
+                  let videoTrack = currentItem.asset.tracks(withMediaType: .video).first else {
+                print("Failed to get video track for export")
+                DispatchQueue.main.async {
+                    self.isExporting = false
+                    self.showExportSuccess = false
+                }
+                return
+            }
+
+            let videoSize = videoTrack.naturalSize
+
+            // Debug logging for UI context
+            print("=== UI EXPORT CONTEXT ===")
+            print("Video track natural size: \(videoSize)")
+            print("finishLineTopX: \(playerViewModel.finishLineTopX)")
+            print("finishLineBottomX: \(playerViewModel.finishLineBottomX)")
+            print("========================")
+
+            // Export with finish line overlay
+            exporter.exportFrameWithFinishLine(
+                from: videoURL,
+                at: videoTime,
+                to: outputURL,
+                topX: playerViewModel.finishLineTopX,
+                bottomX: playerViewModel.finishLineBottomX,
+                videoSize: videoSize,
+                zeroTolerance: true
+            ) { success in
+                DispatchQueue.main.async {
+                    self.isExporting = false
+                    self.showExportSuccess = success
+                    if success {
+                        self.timingModel.addExportedImage(outputURL.path)
+                    }
+                }
+            }
+        } else {
+            let fileName = "\(raceName)-\(timeString).jpg"
+
+            // Save to Desktop
+            let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            let outputURL = desktopURL.appendingPathComponent(fileName)
+
+            // Standard export without overlay
+            exporter.exportFrame(from: videoURL, at: videoTime, to: outputURL, zeroTolerance: true) { success in
+                DispatchQueue.main.async {
+                    self.isExporting = false
+                    self.showExportSuccess = success
+                    if success {
+                        self.timingModel.addExportedImage(outputURL.path)
+                    }
+                }
             }
         }
     }

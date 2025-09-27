@@ -41,6 +41,8 @@ struct SessionData: Codable {
     var finishEvents: [FinishEvent]
     var notes: String
     var recordingStartupDelay: Double  // Delay between record button and actual video start
+    var exportedImages: [String]  // Array of exported image file paths
+    var selectedImagesForSending: Set<String>  // Set of selected image paths for sending
 
     init() {
         self.raceName = "Race"
@@ -49,6 +51,8 @@ struct SessionData: Codable {
         self.finishEvents = []
         self.notes = ""
         self.recordingStartupDelay = 0
+        self.exportedImages = []
+        self.selectedImagesForSending = Set<String>()
     }
 }
 
@@ -88,8 +92,10 @@ class RaceTimingModel: ObservableObject {
 
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.01, repeats: true) { _ in
-            if let startTime = self.raceStartTime {
-                self.raceElapsedTime = Date().timeIntervalSince(startTime)
+            DispatchQueue.main.async {
+                if let startTime = self.raceStartTime {
+                    self.raceElapsedTime = Date().timeIntervalSince(startTime)
+                }
             }
         }
     }
@@ -203,6 +209,33 @@ class RaceTimingModel: ObservableObject {
         guard let raceStartInVideo = sessionData?.raceStartInVideoSeconds,
               raceStartInVideo >= 0 else { return nil }
         return videoTime - raceStartInVideo
+    }
+
+    func addExportedImage(_ imagePath: String) {
+        sessionData?.exportedImages.append(imagePath)
+        // Auto-select new images for sending by default
+        sessionData?.selectedImagesForSending.insert(imagePath)
+    }
+
+    func clearExportedImages() {
+        sessionData?.exportedImages.removeAll()
+        sessionData?.selectedImagesForSending.removeAll()
+    }
+
+    func toggleImageSelection(_ imagePath: String) {
+        if sessionData?.selectedImagesForSending.contains(imagePath) == true {
+            sessionData?.selectedImagesForSending.remove(imagePath)
+        } else {
+            sessionData?.selectedImagesForSending.insert(imagePath)
+        }
+    }
+
+    func isImageSelected(_ imagePath: String) -> Bool {
+        return sessionData?.selectedImagesForSending.contains(imagePath) ?? false
+    }
+
+    func getSelectedImages() -> [String] {
+        return Array(sessionData?.selectedImagesForSending ?? Set<String>())
     }
 
     func saveSession(to url: URL) {

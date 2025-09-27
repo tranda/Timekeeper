@@ -276,7 +276,7 @@ class RacePlanService: ObservableObject {
             let jsonData = try JSONSerialization.data(withJSONObject: requestData, options: .prettyPrinted)
 
             var request = URLRequest(url: url)
-            request.httpMethod = "PUT"
+            request.httpMethod = "POST"
             request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = jsonData
@@ -489,6 +489,146 @@ class RacePlanService: ObservableObject {
         } catch {
             // Cache file doesn't exist or is invalid - that's ok
             availableRacePlan = nil
+        }
+    }
+
+    func submitRaceResultsWithImages(raceId: Int, sessionData: SessionData, finishEvents: [FinishEvent], imagePaths: [String], completion: @escaping (Result<String, Error>) -> Void) {
+        guard let apiKey = KeychainService.shared.getAPIKey() else {
+            completion(.failure(NSError(domain: "RacePlanService", code: 1, userInfo: [NSLocalizedDescriptionKey: "API key not found"])))
+            return
+        }
+
+        guard let url = URL(string: "https://events.motion.rs/api/race-results/update-single-race") else {
+            completion(.failure(NSError(domain: "RacePlanService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid API endpoint URL"])))
+            return
+        }
+
+        // Create multipart form data request
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+
+        // Add race_id field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"race_id\"\r\n\r\n".data(using: .utf8)!)
+        body.append("\(raceId)\r\n".data(using: .utf8)!)
+
+        // Add status field
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"status\"\r\n\r\n".data(using: .utf8)!)
+        body.append("FINISHED\r\n".data(using: .utf8)!)
+
+        // Add lanes data
+        for (index, teamName) in sessionData.teamNames.enumerated() {
+            guard !teamName.isEmpty else { continue }
+
+            let laneIndex = index
+
+            // Add team name
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"lanes[\(laneIndex)][team]\"\r\n\r\n".data(using: .utf8)!)
+            body.append("\(teamName)\r\n".data(using: .utf8)!)
+
+            // Add race time if available
+            if let finishEvent = finishEvents.first(where: { $0.label == teamName }) {
+                let timeString: String
+                switch finishEvent.status {
+                case .finished:
+                    let minutes = Int(finishEvent.tRace) / 60
+                    let seconds = finishEvent.tRace.truncatingRemainder(dividingBy: 60)
+                    timeString = String(format: "%02d:%06.3f", minutes, seconds)
+                case .dns:
+                    timeString = "DNS"
+                case .dnf:
+                    timeString = "DNF"
+                case .dsq:
+                    timeString = "DSQ"
+                case .registered:
+                    timeString = "" // No time for registered status
+                }
+
+                body.append("--\(boundary)\r\n".data(using: .utf8)!)
+                body.append("Content-Disposition: form-data; name=\"lanes[\(laneIndex)][time]\"\r\n\r\n".data(using: .utf8)!)
+                body.append("\(timeString)\r\n".data(using: .utf8)!)
+            }
+        }
+
+        // Add image files
+        for imagePath in imagePaths {
+            let imageURL = URL(fileURLWithPath: imagePath)
+            guard let imageData = try? Data(contentsOf: imageURL) else {
+                print("Warning: Could not read image at path: \(imagePath)")
+                continue
+            }
+
+            let filename = imageURL.lastPathComponent
+            let mimeType = getMimeType(for: imageURL.pathExtension)
+
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"images[]\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+            body.append("Content-Type: \(mimeType)\r\n\r\n".data(using: .utf8)!)
+            body.append(imageData)
+            body.append("\r\n".data(using: .utf8)!)
+        }
+
+        // Close boundary
+        body.append("--\(boundary)--\r\n".data(using: .utf8)!)
+
+        request.httpBody = body
+
+        print("=== SUBMITTING RACE RESULTS WITH IMAGES ===")
+        print("Race ID: \(raceId)")
+        print("Images: \(imagePaths.count)")
+        print("Lanes: \(sessionData.teamNames.filter { !$0.isEmpty }.count)")
+        print("Endpoint: \(url.absoluteString)")
+        print("==========================================")
+
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            DispatchQueue.main.async { [weak self] in
+                if let error = error {
+                    completion(.failure(error))
+                    return
+                }
+
+                if let httpResponse = response as? HTTPURLResponse {
+                    print("=== RACE RESULTS SUBMISSION RESPONSE ===")
+                    print("Status Code: \(httpResponse.statusCode)")
+
+                    if let data = data, let responseString = String(data: data, encoding: .utf8) {
+                        print("Response: \(responseString)")
+                    }
+                    print("========================================")
+
+                    if httpResponse.statusCode == 200 {
+                        // Update internal race data after successful submission
+                        self?.updateInternalRaceData(sessionData: sessionData, finishEvents: finishEvents)
+                        completion(.success("Race results and images submitted successfully"))
+                    } else {
+                        let errorMsg = "Server returned status code: \(httpResponse.statusCode)"
+                        completion(.failure(NSError(domain: "RacePlanService", code: httpResponse.statusCode, userInfo: [NSLocalizedDescriptionKey: errorMsg])))
+                    }
+                }
+            }
+        }.resume()
+    }
+
+    private func getMimeType(for fileExtension: String) -> String {
+        switch fileExtension.lowercased() {
+        case "jpg", "jpeg":
+            return "image/jpeg"
+        case "png":
+            return "image/png"
+        case "gif":
+            return "image/gif"
+        case "webp":
+            return "image/webp"
+        default:
+            return "image/jpeg"
         }
     }
 }

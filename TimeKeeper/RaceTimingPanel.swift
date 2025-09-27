@@ -402,6 +402,11 @@ struct RaceTimingPanel: View {
             }
             .frame(maxWidth: .infinity)
 
+            // Exported Images Selection
+            if timingModel.isRaceInitialized && !(timingModel.sessionData?.exportedImages.isEmpty ?? true) {
+                exportedImagesSection
+            }
+
             // Send Results button (only show if race is initialized)
             if timingModel.isRaceInitialized {
                 Button(action: sendRaceResults) {
@@ -702,22 +707,38 @@ struct RaceTimingPanel: View {
             return
         }
 
-        // Call the API to submit race results
-        racePlanService.submitRaceResults(sessionData: sessionData, finishEvents: timingModel.finishEvents) { result in
-            switch result {
-            case .success(let message):
-                print("✅ SUCCESS: \(message)")
-                resultsAlertTitle = "Success"
-                resultsAlertMessage = "Race results submitted successfully!"
-                resultsAlertIsSuccess = true
-                showResultsAlert = true
+        guard let raceId = sessionData.raceId else {
+            resultsAlertTitle = "Error"
+            resultsAlertMessage = "No race ID found. Cannot submit results."
+            resultsAlertIsSuccess = false
+            showResultsAlert = true
+            return
+        }
 
-            case .failure(let error):
-                print("❌ ERROR: \(error.localizedDescription)")
-                resultsAlertTitle = "Error"
-                resultsAlertMessage = "Failed to submit race results:\n\(error.localizedDescription)"
-                resultsAlertIsSuccess = false
-                showResultsAlert = true
+        // TEMPORARILY DISABLED: Get selected images for upload
+        // let selectedImages = timingModel.getSelectedImages()
+
+        // Call the API to submit race results (without images for now)
+        racePlanService.submitRaceResults(
+            sessionData: sessionData,
+            finishEvents: timingModel.finishEvents
+        ) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let message):
+                    print("✅ SUCCESS: \(message)")
+                    self.resultsAlertTitle = "Success"
+                    self.resultsAlertMessage = "Race results submitted successfully!"
+                    self.resultsAlertIsSuccess = true
+                    self.showResultsAlert = true
+
+                case .failure(let error):
+                    print("❌ ERROR: \(error.localizedDescription)")
+                    self.resultsAlertTitle = "Error"
+                    self.resultsAlertMessage = "Failed to submit race results:\n\(error.localizedDescription)"
+                    self.resultsAlertIsSuccess = false
+                    self.showResultsAlert = true
+                }
             }
         }
     }
@@ -737,6 +758,19 @@ struct RaceTimingPanel: View {
             return index + 1
         }
         return nil
+    }
+
+    private var exportedImagesSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+
+            Text("Exported Images (\(timingModel.getSelectedImages().count) selected)")
+                .font(.headline)
+
+            Text("Basic image selection functionality - checkboxes coming soon")
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
     }
 
     private func textColorForStatus(_ status: LaneStatus) -> Color {

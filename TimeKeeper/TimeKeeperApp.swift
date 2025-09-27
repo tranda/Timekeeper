@@ -14,6 +14,12 @@ struct TimeKeeperApp: App {
         WindowGroup {
             ContentView()
                 .frame(minWidth: 920, minHeight: 620)
+                .onAppear {
+                    // Maximize window on startup
+                    if let window = NSApplication.shared.windows.first {
+                        window.setFrame(NSScreen.main?.visibleFrame ?? window.frame, display: true)
+                    }
+                }
                 .alert("TimeKeeper Help", isPresented: $showingHelp) {
                     Button("OK") { }
                 } message: {

@@ -323,7 +323,9 @@ extension CaptureManager: AVCaptureFileOutputRecordingDelegate {
             print(">>> Recording startup delay: \(String(format: "%.3f", delay)) seconds (\(Int(delay * 1000))ms)")
 
             // Don't use this delay for compensation - it's not accurate
-            self.timingModel?.recordingStartupDelay = 0
+            DispatchQueue.main.async {
+                self.timingModel?.recordingStartupDelay = 0
+            }
         }
     }
 
