@@ -737,6 +737,13 @@ struct RaceTimingPanel: View {
                 print("⚠️ Could not find event in session data to update")
             }
 
+            // Log all current times after update
+            print("📊 ALL CURRENT TIMES AFTER UPDATE:")
+            for (i, finishEvent) in timingModel.finishEvents.enumerated() {
+                let rounded = round(finishEvent.tRace * 1000) / 1000
+                print("   \(i+1). \(finishEvent.label): \(finishEvent.tRace) (rounded: \(rounded)) - \(finishEvent.status.rawValue)")
+            }
+
             // Session will be saved manually via Save button
         } else {
             print("⚠️ Could not find finish event with ID \(event.id) to update")
@@ -751,6 +758,13 @@ struct RaceTimingPanel: View {
         // Create a new finish event for this lane
         print("🆕 Creating new finish event for \(teamName) with time \(time)")
         timingModel.recordFinishAtTime(time, lane: teamName, videoTime: nil, status: .finished)
+
+        // Log all current times after creation
+        print("📊 ALL CURRENT TIMES AFTER CREATION:")
+        for (i, finishEvent) in timingModel.finishEvents.enumerated() {
+            let rounded = round(finishEvent.tRace * 1000) / 1000
+            print("   \(i+1). \(finishEvent.label): \(finishEvent.tRace) (rounded: \(rounded)) - \(finishEvent.status.rawValue)")
+        }
     }
 
     private func loadVideoForReview() {
@@ -1165,9 +1179,10 @@ struct RaceTimingPanel: View {
     }
 
     private func formatRaceTime(_ seconds: Double) -> String {
+        // Round milliseconds to handle floating-point precision issues
         let minutes = Int(seconds) / 60
         let secs = Int(seconds) % 60
-        let millis = Int((seconds.truncatingRemainder(dividingBy: 1)) * 1000)
+        let millis = Int(round((seconds.truncatingRemainder(dividingBy: 1)) * 1000))
         return String(format: "%02d:%02d.%03d", minutes, secs, millis)
     }
 
@@ -1175,10 +1190,25 @@ struct RaceTimingPanel: View {
         // Only calculate position for finished events
         let finishedEvents = events.filter { $0.status == .finished }
         let sortedEvents = finishedEvents.sorted { $0.tRace < $1.tRace }
-        if let index = sortedEvents.firstIndex(where: { $0.id == event.id }) {
-            return index + 1
+
+        guard let targetEvent = sortedEvents.first(where: { $0.id == event.id }) else {
+            return nil
         }
-        return nil
+
+        // Times are already rounded when recorded, so no need to round again for comparison
+        let targetTime = targetEvent.tRace
+
+        // Find position by counting crews with better (faster) times
+        // Crews with identical times share the same position
+        let betterTimes = sortedEvents.filter { $0.tRace < targetTime }
+        let position = betterTimes.count + 1
+
+        print("🏁 Position calculation for \(targetEvent.label):")
+        print("   Time: \(targetTime)")
+        print("   Teams with better times: \(betterTimes.count)")
+        print("   Calculated position: \(position)")
+
+        return position
     }
 
     private var exportedImagesSection: some View {
@@ -1438,7 +1468,7 @@ struct EditableTimeField: View {
             if isEditing {
                 TextField("", text: $editText)
                     .font(.system(size: 14, design: .monospaced))
-                    .textFieldStyle(.plain)
+                    .textFieldStyle(.roundedBorder)
                     .focused($isTextFieldFocused)
                     .onSubmit {
                         saveTime()
@@ -1450,6 +1480,15 @@ struct EditableTimeField: View {
                         // Save when field loses focus
                         if !focused && isEditing {
                             saveTime()
+                        }
+                    }
+                    .allowsHitTesting(true)
+                    .onAppear {
+                        // Ensure proper text selection on edit start
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            if let textField = NSApp.keyWindow?.firstResponder as? NSTextField {
+                                textField.selectText(nil)
+                            }
                         }
                     }
             } else {
@@ -1503,9 +1542,10 @@ struct EditableTimeField: View {
     }
 
     private func formatRaceTimeHelper(_ seconds: Double) -> String {
+        // Round milliseconds to handle floating-point precision issues
         let minutes = Int(seconds) / 60
         let secs = Int(seconds) % 60
-        let millis = Int((seconds.truncatingRemainder(dividingBy: 1)) * 1000)
+        let millis = Int(round((seconds.truncatingRemainder(dividingBy: 1)) * 1000))
         return String(format: "%02d:%02d.%03d", minutes, secs, millis)
     }
 

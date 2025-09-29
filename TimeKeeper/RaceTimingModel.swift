@@ -111,16 +111,21 @@ class RaceTimingModel: ObservableObject {
     }
 
     func recordFinishAtTime(_ time: Double, lane: String, videoTime: Double? = nil, status: LaneStatus = .finished) {
-        let event = FinishEvent(tRace: time, tVideo: videoTime, label: lane, status: status)
+        // Round race time to 3 decimal places (milliseconds) when recording
+        let roundedTime = round(time * 1000) / 1000
+        let roundedVideoTime = videoTime.map { round($0 * 1000) / 1000 }
+
+        let event = FinishEvent(tRace: roundedTime, tVideo: roundedVideoTime, label: lane, status: status)
         finishEvents.append(event)
         sessionData?.finishEvents.append(event)
 
         // Log the marker details
-        let videoTimeStr = videoTime.map { String(format: "%02d:%02d.%03d", Int($0) / 60, Int($0) % 60, Int(($0.truncatingRemainder(dividingBy: 1)) * 1000)) } ?? "N/A"
+        let videoTimeStr = roundedVideoTime.map { String(format: "%02d:%02d.%03d", Int($0) / 60, Int($0) % 60, Int(round(($0.truncatingRemainder(dividingBy: 1)) * 1000))) } ?? "N/A"
         print(">>> Finish marker saved:")
         print("    Lane: \(lane)")
         print("    Status: \(status.rawValue)")
-        print("    Race time: \(String(format: "%02d:%02d.%03d", Int(time) / 60, Int(time) % 60, Int((time.truncatingRemainder(dividingBy: 1)) * 1000)))")
+        print("    Original time: \(time) -> Rounded time: \(roundedTime)")
+        print("    Race time: \(String(format: "%02d:%02d.%03d", Int(roundedTime) / 60, Int(roundedTime) % 60, Int(round((roundedTime.truncatingRemainder(dividingBy: 1)) * 1000))))")
         print("    Video time: \(videoTimeStr)")
 
         // Session will be saved manually via Save button

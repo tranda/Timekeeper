@@ -684,20 +684,36 @@ struct ContentView: View {
             return nil // Consume the event
 
         case 36: // RETURN
-            handleStartStopShortcut()
-            return nil
+            // Don't handle start/stop if a text field is being edited
+            if !isTextFieldEditing() {
+                handleStartStopShortcut()
+                return nil
+            }
+            return event // Let the text field handle it
 
         case 53: // ESCAPE
-            handleEmergencyStopShortcut()
-            return nil
+            // Don't handle emergency stop if a text field is being edited
+            if !isTextFieldEditing() {
+                handleEmergencyStopShortcut()
+                return nil
+            }
+            return event // Let the text field handle it
 
         case 123: // LEFT ARROW
-            handleTimelineNavigation(direction: .left, modifiers: modifierFlags)
-            return nil
+            // Don't handle timeline navigation if a text field is being edited
+            if !isTextFieldEditing() {
+                handleTimelineNavigation(direction: .left, modifiers: modifierFlags)
+                return nil
+            }
+            return event // Let the text field handle it
 
         case 124: // RIGHT ARROW
-            handleTimelineNavigation(direction: .right, modifiers: modifierFlags)
-            return nil
+            // Don't handle timeline navigation if a text field is being edited
+            if !isTextFieldEditing() {
+                handleTimelineNavigation(direction: .right, modifiers: modifierFlags)
+                return nil
+            }
+            return event // Let the text field handle it
 
         case 115: // HOME
             handleTimelineJump(.start)
@@ -805,6 +821,17 @@ struct ContentView: View {
 
     private enum TimelineDirection {
         case left, right
+    }
+
+    private func isTextFieldEditing() -> Bool {
+        // Check if the current first responder is a text field
+        guard let keyWindow = NSApp.keyWindow,
+              let firstResponder = keyWindow.firstResponder else {
+            return false
+        }
+
+        // Check if it's an NSTextField or NSTextView (text editing)
+        return firstResponder is NSTextField || firstResponder is NSTextView
     }
 
     private enum TimelineJump {
