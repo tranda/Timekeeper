@@ -9,6 +9,8 @@ struct RaceTimelineView: View {
 
     @State private var currentRaceTime: Double = 0
     @State private var isDragging = false
+    @State private var isDraggingVideoTiming = false
+    @State private var isHoveringVideoBar = false
     @State private var showLaneInput = false
     @State private var selectedLane = "1"
     @State private var showOverwriteConfirmation = false
@@ -82,6 +84,9 @@ struct RaceTimelineView: View {
                 }
             }
 
+            // Timing Adjustment Controls
+            timingAdjustmentSection
+
             // Main Timeline Slider
             VStack(spacing: 10) {
                 // Timeline with markers
@@ -102,11 +107,19 @@ struct RaceTimelineView: View {
                             let startX = geometry.size.width * videoStartPercent
                             let width = geometry.size.width * (videoEndPercent - videoStartPercent)
 
-                            RoundedRectangle(cornerRadius: 2)
-                                .fill(Color.blue.opacity(0.3))
-                                .frame(width: width, height: 36)
-                                .offset(x: startX, y: 2)
-                                .allowsHitTesting(false)  // Don't interfere with interactions
+                            DraggableVideoBar(
+                                width: width,
+                                startX: startX,
+                                isHovering: $isHoveringVideoBar,
+                                isDragging: $isDraggingVideoTiming,
+                                geometry: geometry,
+                                raceEndTime: raceEndTime,
+                                videoStartInRace: videoStartInRace,
+                                currentRaceTime: currentRaceTime,
+                                isVideoAvailable: isVideoAvailable,
+                                playerViewModel: playerViewModel,
+                                updateVideoStartInRace: updateVideoStartInRace
+                            )
                         }
                     }
 
@@ -559,5 +572,206 @@ struct RaceTimelineView: View {
                 }
             }
         }
+    }
+
+    // MARK: - Timing Adjustment Section
+
+    private var timingAdjustmentSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text("Timing Adjustment")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+
+                Spacer()
+
+                Text("Drag blue bar to adjust video timing")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .italic()
+            }
+
+            HStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Race Duration")
+                        .font(.caption)
+                        .fontWeight(.medium)
+
+                    HStack(spacing: 8) {
+                        TextField("mm:ss", text: Binding(
+                            get: {
+                                if let sessionData = timingModel.sessionData,
+                                   let raceStart = sessionData.raceStartWallclock,
+                                   let raceStop = timingModel.raceStopTime {
+                                    let duration = raceStop.timeIntervalSince(raceStart)
+                                    return formatTimeForInput(duration)
+                                } else if let maxFinishTime = timingModel.finishEvents.map({ $0.tRace }).max(), maxFinishTime > 0 {
+                                    // Use max finish time + buffer as race duration
+                                    return formatTimeForInput(maxFinishTime + 10)
+                                }
+                                return ""
+                            },
+                            set: { newValue in
+                                if let duration = parseTimeString(newValue) {
+                                    updateRaceDuration(duration)
+                                }
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+
+                        Text("(e.g., 01:30)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Video Start in Race")
+                        .font(.caption)
+                        .fontWeight(.medium)
+
+                    HStack(spacing: 8) {
+                        Text(formatTime(videoStartInRace))
+                            .font(.system(size: 12, design: .monospaced))
+                            .foregroundColor(.blue)
+                            .frame(width: 80, alignment: .leading)
+
+                        Text("(drag blue bar)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Spacer()
+            }
+        }
+        .padding()
+        .background(Color.blue.opacity(0.05))
+        .cornerRadius(8)
+    }
+
+    private func formatTimeForInput(_ seconds: Double) -> String {
+        let minutes = Int(seconds) / 60
+        let secs = Int(seconds.truncatingRemainder(dividingBy: 60))
+        return String(format: "%02d:%02d", minutes, secs)
+    }
+
+    private func parseTimeString(_ timeString: String) -> Double? {
+        let components = timeString.split(separator: ":")
+        guard components.count == 2 else { return nil }
+
+        let minutes = Double(components[0]) ?? 0
+        let seconds = Double(components[1]) ?? 0
+
+        return minutes * 60 + seconds
+    }
+
+    private func updateRaceDuration(_ duration: Double) {
+        guard let sessionData = timingModel.sessionData else { return }
+
+        // Update race stop time based on new duration
+        if let raceStart = sessionData.raceStartWallclock ?? timingModel.raceStartTime {
+            let newRaceStop = raceStart.addingTimeInterval(duration)
+            timingModel.raceStopTime = newRaceStop
+            timingModel.sessionData?.videoStopWallclock = newRaceStop
+
+            // Also update race elapsed time
+            timingModel.raceElapsedTime = duration
+
+            print("🎯 Updated race duration to \(formatTimeForInput(duration))")
+        }
+    }
+
+    private func updateVideoStartInRace(_ newVideoStartInRace: Double) {
+        guard let sessionData = timingModel.sessionData else { return }
+
+        // Update videoStartInRace in session data
+        timingModel.sessionData?.videoStartInRace = newVideoStartInRace
+
+        // Update wallclock timing if we have race start time
+        if let raceStart = sessionData.raceStartWallclock ?? timingModel.raceStartTime {
+            let newVideoStartWallclock = raceStart.addingTimeInterval(newVideoStartInRace)
+            captureManager.videoStartTime = newVideoStartWallclock
+            timingModel.sessionData?.videoStartWallclock = newVideoStartWallclock
+
+            print("🎬 Updated video start in race to \(formatTime(newVideoStartInRace))")
+            print("   New video start wallclock: \(newVideoStartWallclock)")
+        }
+    }
+}
+
+struct DraggableVideoBar: View {
+    let width: CGFloat
+    let startX: CGFloat
+    @Binding var isHovering: Bool
+    @Binding var isDragging: Bool
+    let geometry: GeometryProxy
+    let raceEndTime: Double
+    let videoStartInRace: Double
+    let currentRaceTime: Double
+    let isVideoAvailable: Bool
+    let playerViewModel: PlayerViewModel
+    let updateVideoStartInRace: (Double) -> Void
+
+    @State private var dragStartVideoStartInRace: Double = 0
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 2)
+            .fill(Color.blue.opacity(isHovering || isDragging ? 0.5 : 0.3))
+            .overlay(
+                // Add visual indicator that this is draggable
+                RoundedRectangle(cornerRadius: 2)
+                    .stroke(Color.blue.opacity(isHovering || isDragging ? 0.8 : 0.6), lineWidth: isHovering || isDragging ? 2 : 1)
+            )
+            .overlay(
+                // Add drag handle in the center
+                HStack(spacing: 2) {
+                    ForEach(0..<3, id: \.self) { _ in
+                        Rectangle()
+                            .fill(Color.blue.opacity(isHovering || isDragging ? 1.0 : 0.8))
+                            .frame(width: 2, height: isHovering || isDragging ? 16 : 12)
+                    }
+                }
+            )
+            .frame(width: width, height: 36)
+            .offset(x: startX, y: 2)
+            .scaleEffect(isDragging ? 1.05 : 1.0)
+            .onHover { hovering in
+                isHovering = hovering
+            }
+            .help("Drag to adjust video timing")
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if !isDragging {
+                            // Store the initial video start position when drag begins
+                            dragStartVideoStartInRace = videoStartInRace
+                            isDragging = true
+                        }
+
+                        // Calculate new video start time based on absolute drag distance
+                        let dragDeltaX = value.translation.width
+                        let dragDeltaTime = (dragDeltaX / geometry.size.width) * raceEndTime
+
+                        let newVideoStartInRace = dragStartVideoStartInRace + dragDeltaTime
+                        updateVideoStartInRace(newVideoStartInRace)
+
+                        // Update video preview in real-time if positioned on timeline
+                        if isVideoAvailable && currentRaceTime >= newVideoStartInRace {
+                            let videoTime = currentRaceTime - newVideoStartInRace
+                            if videoTime >= 0 {
+                                playerViewModel.seek(to: videoTime, precise: true)
+                                playerViewModel.isSeekingOutsideVideo = false
+                            }
+                        } else {
+                            playerViewModel.isSeekingOutsideVideo = true
+                        }
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                        print("🎬 Video timing adjustment completed - final position: \(String(format: "%.3f", videoStartInRace))s")
+                    }
+            )
     }
 }

@@ -319,6 +319,7 @@ struct RaceTimingPanel: View {
                 Divider()
             }
 
+
             // Race Results Table
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
@@ -1251,6 +1252,7 @@ struct RaceTimingPanel: View {
                sessionData.videoStartWallclock == nil
     }
 
+
     private var manualTimingSetupSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
@@ -1453,6 +1455,7 @@ struct RaceTimingPanel: View {
     private func markAsUnsaved() {
         hasUnsavedChanges = true
     }
+
 }
 
 struct EditableTimeField: View {
