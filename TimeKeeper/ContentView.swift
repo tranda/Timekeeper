@@ -148,7 +148,6 @@ struct ContentView: View {
                                     HStack {
                                         Spacer()
                                         VStack {
-                                            Spacer()
                                             // Container view that's 90% of parent size
                                             GeometryReader { geometry in
                                             let videoWidth = geometry.size.width
@@ -218,19 +217,19 @@ struct ContentView: View {
                                                                                 .foregroundColor(.white.opacity(0.6))
                                                                                 .font(.system(size: 8))
                                                                         }
-                                                                        .frame(height: videoHeight / 5)
+                                                                        .frame(height: videoHeight * 0.12)
                                                                     }
                                                                 }
-                                                                .frame(width: 30, height: videoHeight)
+                                                                .frame(width: 30, height: videoHeight * 0.6)
 
                                                                 Slider(value: Binding(
                                                                     get: { playerViewModel.zoomScale },
                                                                     set: { playerViewModel.setZoom($0) }
                                                                 ), in: 1.0...5.0, step: 0.1)
                                                                 .accentColor(.white)
-                                                                .frame(width: videoHeight)
+                                                                .frame(width: videoHeight * 0.6)
                                                                 .rotationEffect(.degrees(-90))
-                                                                .frame(width: 20, height: videoHeight)
+                                                                .frame(width: 20, height: videoHeight * 0.6)
                                                             }
 
                                                             Text("1x")
@@ -524,7 +523,7 @@ struct ContentView: View {
                     }
                 }
                 .frame(maxHeight: .infinity)
-                Spacer().frame(height: 100)
+                Spacer().frame(height: 10)
 
                 // Add flexible space between video and timeline
                 Spacer()
@@ -540,6 +539,7 @@ struct ContentView: View {
                     .frame(height: 300)
                     .padding(.horizontal)
                 }
+                Spacer()
             }
             .padding()
             .frame(maxWidth: .infinity)

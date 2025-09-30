@@ -798,6 +798,9 @@ struct RaceTimingPanel: View {
 
         print("🎥 Loading video for review mode: \(videoPath)")
 
+        // Read and store video duration automatically
+        timingModel.readAndStoreVideoDuration(from: videoPath)
+
         // Set the video URL in capture manager for consistency
         captureManager.lastRecordedURL = videoURL
 
@@ -919,6 +922,9 @@ struct RaceTimingPanel: View {
 
     private func loadSelectedVideo(url: URL) {
         print("🎥 Loading selected video: \(url.path)")
+
+        // Read and store video duration automatically
+        timingModel.readAndStoreVideoDuration(from: url.path)
 
         // Set the video URL in capture manager for consistency
         captureManager.lastRecordedURL = url

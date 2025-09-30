@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import AVFoundation
 
 // Configuration constant - change this to adjust the number of lanes
 let MAX_LANES = 4
@@ -44,6 +45,8 @@ struct SessionData: Codable {
     var exportedImages: [String]  // Array of exported image file paths
     var selectedImagesForSending: Set<String>  // Set of selected image paths for sending
     var videoFilePath: String?  // Path to the recorded video file for review mode
+    var videoDuration: Double?  // Duration of the video file in seconds
+    var raceDuration: Double?  // Duration of the race in seconds (manually adjustable)
 
     init() {
         self.raceName = "Race"
@@ -271,8 +274,16 @@ class RaceTimingModel: ObservableObject {
         recordingStartupDelay = loadedSession.recordingStartupDelay
         isRaceActive = false
 
-        if let raceStart = raceStartTime {
-            // Calculate elapsed time based on stop time if race was stopped
+        // Set race elapsed time and stop time based on stored race duration
+        if let raceDuration = loadedSession.raceDuration {
+            // Use stored race duration (manually adjusted)
+            raceElapsedTime = raceDuration
+            if let raceStart = raceStartTime {
+                raceStopTime = raceStart.addingTimeInterval(raceDuration)
+            }
+            print("📊 Loaded race duration: \(raceDuration)s (manually set)")
+        } else if let raceStart = raceStartTime {
+            // Fallback to wallclock calculation
             if let raceStop = raceStopTime {
                 raceElapsedTime = raceStop.timeIntervalSince(raceStart)
             } else {
@@ -285,6 +296,7 @@ class RaceTimingModel: ObservableObject {
                     raceElapsedTime = 0
                 }
             }
+            print("📊 Calculated race elapsed time: \(raceElapsedTime)s (from wallclock)")
         }
     }
 
@@ -296,5 +308,34 @@ class RaceTimingModel: ObservableObject {
         let sessionURL = saveDirectory.appendingPathComponent(sessionFileName)
         saveSession(to: sessionURL)
         print("Session saved to: \(sessionURL.path)")
+    }
+
+    func readAndStoreVideoDuration(from videoPath: String) {
+        guard FileManager.default.fileExists(atPath: videoPath) else {
+            print("⚠️ Video file not found: \(videoPath)")
+            return
+        }
+
+        let videoURL = URL(fileURLWithPath: videoPath)
+        let asset = AVAsset(url: videoURL)
+        let duration = asset.duration
+
+        guard duration.isValid && !duration.isIndefinite else {
+            print("⚠️ Could not read valid duration from video: \(videoPath)")
+            return
+        }
+
+        let durationSeconds = CMTimeGetSeconds(duration)
+        sessionData?.videoDuration = durationSeconds
+
+        print("📹 Video duration read: \(String(format: "%.3f", durationSeconds))s (\(formatDuration(durationSeconds)))")
+        print("📝 Note: Video duration stored independently - race duration unchanged")
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        let minutes = Int(seconds) / 60
+        let secs = Int(seconds) % 60
+        let millis = Int((seconds.truncatingRemainder(dividingBy: 1)) * 1000)
+        return String(format: "%02d:%02d.%03d", minutes, secs, millis)
     }
 }

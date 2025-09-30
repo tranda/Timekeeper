@@ -19,6 +19,12 @@ struct RaceTimelineView: View {
     @State private var isExporting = false
 
     var raceEndTime: Double {
+        // First try to use stored race duration if available
+        if let raceDuration = timingModel.sessionData?.raceDuration {
+            return raceDuration
+        }
+
+        // Fallback to wallclock calculation
         guard let raceStart = timingModel.raceStartTime else { return 0 }
         // Use stop time if race was stopped, otherwise current time
         if let raceStop = timingModel.raceStopTime {
@@ -48,13 +54,21 @@ struct RaceTimelineView: View {
     }
 
     var videoEndInRace: Double {
+        // First try to use stored video duration if available
+        if let videoDuration = timingModel.sessionData?.videoDuration {
+            let result = videoStartInRace + videoDuration
+            print("🐛 Timeline: videoEndInRace = \(result) (using stored duration: \(videoDuration)s)")
+            return result
+        }
+
+        // Fallback to wallclock calculation
         guard let videoStop = captureManager.videoStopTime,
               let raceStart = timingModel.raceStartTime else {
             print("🐛 Timeline: Missing end timing data - videoStop: \(captureManager.videoStopTime?.description ?? "nil"), raceStart: \(timingModel.raceStartTime?.description ?? "nil")")
             return raceEndTime
         }
         let result = videoStop.timeIntervalSince(raceStart)
-        print("🐛 Timeline: videoEndInRace = \(result) (videoStop: \(videoStop), raceStart: \(raceStart))")
+        print("🐛 Timeline: videoEndInRace = \(result) (fallback: videoStop - raceStart)")
         return result
     }
 
@@ -118,7 +132,10 @@ struct RaceTimelineView: View {
                                 currentRaceTime: currentRaceTime,
                                 isVideoAvailable: isVideoAvailable,
                                 playerViewModel: playerViewModel,
-                                updateVideoStartInRace: updateVideoStartInRace
+                                updateVideoStartInRace: updateVideoStartInRace,
+                                onDragCompleted: {
+                                    print("🎬 Video timing drag completed - data ready for manual save")
+                                }
                             )
                         }
                     }
@@ -600,6 +617,12 @@ struct RaceTimelineView: View {
                     HStack(spacing: 8) {
                         TextField("mm:ss", text: Binding(
                             get: {
+                                // First try to use stored race duration
+                                if let raceDuration = timingModel.sessionData?.raceDuration {
+                                    return formatTimeForInput(raceDuration)
+                                }
+
+                                // Fallback to calculated duration from wallclock times
                                 if let sessionData = timingModel.sessionData,
                                    let raceStart = sessionData.raceStartWallclock,
                                    let raceStop = timingModel.raceStopTime {
@@ -643,6 +666,34 @@ struct RaceTimelineView: View {
                     }
                 }
 
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Video Duration")
+                        .font(.caption)
+                        .fontWeight(.medium)
+
+                    HStack(spacing: 8) {
+                        if let videoDuration = timingModel.sessionData?.videoDuration {
+                            Text(formatTime(videoDuration))
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(.green)
+                                .frame(width: 80, alignment: .leading)
+
+                            Text("(from file)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        } else {
+                            Text("--:--.---")
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundColor(.secondary)
+                                .frame(width: 80, alignment: .leading)
+
+                            Text("(not loaded)")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
                 Spacer()
             }
         }
@@ -670,16 +721,19 @@ struct RaceTimelineView: View {
     private func updateRaceDuration(_ duration: Double) {
         guard let sessionData = timingModel.sessionData else { return }
 
-        // Update race stop time based on new duration
+        // Update ONLY race timing - do NOT touch video timing
         if let raceStart = sessionData.raceStartWallclock ?? timingModel.raceStartTime {
             let newRaceStop = raceStart.addingTimeInterval(duration)
             timingModel.raceStopTime = newRaceStop
-            timingModel.sessionData?.videoStopWallclock = newRaceStop
+            // Removed: timingModel.sessionData?.videoStopWallclock = newRaceStop
 
             // Also update race elapsed time
             timingModel.raceElapsedTime = duration
 
-            print("🎯 Updated race duration to \(formatTimeForInput(duration))")
+            // Store race duration in session data for persistence
+            timingModel.sessionData?.raceDuration = duration
+
+            print("🎯 Updated race duration to \(formatTimeForInput(duration)) - stored in session data")
         }
     }
 
@@ -713,6 +767,7 @@ struct DraggableVideoBar: View {
     let isVideoAvailable: Bool
     let playerViewModel: PlayerViewModel
     let updateVideoStartInRace: (Double) -> Void
+    let onDragCompleted: () -> Void
 
     @State private var dragStartVideoStartInRace: Double = 0
 
@@ -771,6 +826,7 @@ struct DraggableVideoBar: View {
                     .onEnded { _ in
                         isDragging = false
                         print("🎬 Video timing adjustment completed - final position: \(String(format: "%.3f", videoStartInRace))s")
+                        onDragCompleted()
                     }
             )
     }
