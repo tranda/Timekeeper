@@ -143,11 +143,16 @@ class PlayerViewModel: ObservableObject {
         }
 
         let newScale = pinchStartScale * magnification
-        zoomScale = max(1.0, min(newScale, 5.0))
+        // Allow temporary zoom below 1.0 during gesture for better responsiveness
+        zoomScale = max(0.5, min(newScale, 5.0))
     }
 
     func endPinchGesture() {
         isPinchGestureActive = false
+        // Snap back to minimum 1.0 zoom when gesture ends
+        if zoomScale < 1.0 {
+            zoomScale = 1.0
+        }
     }
 
     func panVideo(by offset: CGSize) {

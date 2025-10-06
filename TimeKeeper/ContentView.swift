@@ -208,8 +208,9 @@ struct ContentView: View {
                                                                 .gesture(
                                                                     DragGesture()
                                                                         .onChanged { value in
-                                                                            let deltaX = value.translation.width / overlayGeometry.size.width
-                                                                            playerViewModel.moveFinishLineHorizontally(by: deltaX * 0.01)
+                                                                            let newX = value.location.x / overlayGeometry.size.width
+                                                                            playerViewModel.setFinishLineTopX(newX)
+                                                                            playerViewModel.setFinishLineBottomX(newX)
                                                                         }
                                                                 )
 
