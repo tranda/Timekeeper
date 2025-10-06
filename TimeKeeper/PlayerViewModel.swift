@@ -12,14 +12,19 @@ class PlayerViewModel: ObservableObject {
     @Published var zoomScale: Double = 1.0
     @Published var zoomOffset: CGSize = .zero
 
+    // Pan gesture state
+    private var panStartOffset: CGSize = .zero
+    private var isPanGestureActive: Bool = false
+
+    // Pinch gesture state
+    private var pinchStartScale: Double = 1.0
+    private var isPinchGestureActive: Bool = false
+
     // Photo finish overlay
     @Published var showPhotoFinishOverlay = true
     @Published var finishLineTopX: Double = 0.5 // Normalized X position for top of line (0.0 to 1.0)
     @Published var finishLineBottomX: Double = 0.5 // Normalized X position for bottom of line (0.0 to 1.0)
 
-    // Pan timer for continuous panning
-    private var panTimer: Timer?
-    private var panStartTime: Date?
 
     private var timeObserver: Any?
     private var statusObserver: AnyCancellable?
@@ -36,7 +41,6 @@ class PlayerViewModel: ObservableObject {
         if let observer = timeObserver {
             player.removeTimeObserver(observer)
         }
-        stopContinuousPan()
     }
 
     private func setupObservers() {
@@ -127,6 +131,25 @@ class PlayerViewModel: ObservableObject {
         zoomScale = max(1.0, min(scale, 5.0))
     }
 
+    func startPinchGesture() {
+        pinchStartScale = zoomScale
+    }
+
+    func updatePinchGesture(magnification: Double) {
+        // Start gesture if not already active
+        if !isPinchGestureActive {
+            startPinchGesture()
+            isPinchGestureActive = true
+        }
+
+        let newScale = pinchStartScale * magnification
+        zoomScale = max(1.0, min(newScale, 5.0))
+    }
+
+    func endPinchGesture() {
+        isPinchGestureActive = false
+    }
+
     func panVideo(by offset: CGSize) {
         let maxOffset: Double = 200 // Limit pan distance
         let newX = max(-maxOffset, min(maxOffset, zoomOffset.width + offset.width))
@@ -134,24 +157,34 @@ class PlayerViewModel: ObservableObject {
         zoomOffset = CGSize(width: newX, height: newY)
     }
 
-    func startContinuousPan(direction: CGSize) {
-        stopContinuousPan() // Stop any existing pan
-        panStartTime = Date()
-        panTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { _ in
-            self.panVideo(by: direction)
+    func startPanGesture() {
+        panStartOffset = zoomOffset
+    }
+
+    func updatePanGesture(translation: CGSize) {
+        // Start gesture if not already active
+        if !isPanGestureActive {
+            startPanGesture()
+            isPanGestureActive = true
         }
+
+        // Add translation to the starting offset, no need to adjust for zoom scale
+        let newOffset = CGSize(
+            width: panStartOffset.width + translation.width,
+            height: panStartOffset.height + translation.height
+        )
+
+        // Dynamic max offset based on zoom level
+        let maxOffset: Double = 200 * zoomScale
+        let newX = max(-maxOffset, min(maxOffset, newOffset.width))
+        let newY = max(-maxOffset, min(maxOffset, newOffset.height))
+        zoomOffset = CGSize(width: newX, height: newY)
     }
 
-    func stopContinuousPan() {
-        panTimer?.invalidate()
-        panTimer = nil
-        panStartTime = nil
+    func endPanGesture() {
+        isPanGestureActive = false
     }
 
-    var isPanningLongerThanThreshold: Bool {
-        guard let startTime = panStartTime else { return false }
-        return Date().timeIntervalSince(startTime) > 0.1
-    }
 
     // MARK: - Photo Finish Overlay
 

@@ -154,32 +154,113 @@ struct ContentView: View {
                                             let videoHeight = geometry.size.height
 
                                             ZStack {
-                                            AVPlayerView(player: playerViewModel.player)
-                                                .frame(width: videoWidth, height: videoHeight)
-                                                .background(Color.black)
-                                                .aspectRatio(contentMode: .fit)  // Show full video with letterboxing
-                                                .cornerRadius(8)
-                                                .focusable(false)  // Disable keyboard focus and shortcuts
+                                                // Background for pan gestures - invisible overlay to capture pan gestures
+                                                Color.clear
+                                                    .contentShape(Rectangle()) // Makes the clear color tappable
+                                                    .gesture(
+                                                        SimultaneousGesture(
+                                                            MagnificationGesture()
+                                                                .onChanged { magnification in
+                                                                    playerViewModel.updatePinchGesture(magnification: magnification)
+                                                                }
+                                                                .onEnded { _ in
+                                                                    playerViewModel.endPinchGesture()
+                                                                },
+                                                            DragGesture()
+                                                                .onChanged { value in
+                                                                    // Pan the unified container when zoomed in
+                                                                    if playerViewModel.zoomScale > 1.0 {
+                                                                        playerViewModel.updatePanGesture(translation: value.translation)
+                                                                    }
+                                                                }
+                                                                .onEnded { _ in
+                                                                    // Pan gesture ended, reset gesture state
+                                                                    playerViewModel.endPanGesture()
+                                                                }
+                                                        )
+                                                    )
+
+                                                // Unified video and overlay container with zoom and pan
+                                                ZStack {
+                                                    AVPlayerView(player: playerViewModel.player)
+                                                        .background(Color.black)
+                                                        .aspectRatio(contentMode: .fit)  // Show full video with letterboxing
+                                                        .cornerRadius(8)
+                                                        .focusable(false)  // Disable keyboard focus and shortcuts
+                                                        .allowsHitTesting(false) // Prevent video from intercepting gestures
+
+                                                    // Photo finish overlay
+                                                    if playerViewModel.showPhotoFinishOverlay {
+                                                        GeometryReader { overlayGeometry in
+                                                            ZStack {
+                                                                // Finish line - slightly smaller than video frame
+                                                                Path { path in
+                                                                    let margin = overlayGeometry.size.height * 0.1 // 10% margin
+                                                                    let topX = overlayGeometry.size.width * playerViewModel.finishLineTopX
+                                                                    let topY: CGFloat = margin // 10% from top
+                                                                    let bottomX = overlayGeometry.size.width * playerViewModel.finishLineBottomX
+                                                                    let bottomY = overlayGeometry.size.height - margin // 10% from bottom
+
+                                                                    path.move(to: CGPoint(x: topX, y: topY))
+                                                                    path.addLine(to: CGPoint(x: bottomX, y: bottomY))
+                                                                }
+                                                                .stroke(Color.red, lineWidth: 1)
+                                                                .gesture(
+                                                                    DragGesture()
+                                                                        .onChanged { value in
+                                                                            let deltaX = value.translation.width / overlayGeometry.size.width
+                                                                            playerViewModel.moveFinishLineHorizontally(by: deltaX * 0.01)
+                                                                        }
+                                                                )
+
+                                                                // Top handle - positioned at top end of shortened line
+                                                                Circle()
+                                                                    .fill(Color.red)
+                                                                    .frame(width: 12, height: 12)
+                                                                    .position(
+                                                                        x: overlayGeometry.size.width * playerViewModel.finishLineTopX,
+                                                                        y: overlayGeometry.size.height * 0.1 // 10% from top
+                                                                    )
+                                                                    .gesture(
+                                                                        DragGesture()
+                                                                            .onChanged { value in
+                                                                                let newX = value.location.x / overlayGeometry.size.width
+                                                                                playerViewModel.setFinishLineTopX(newX)
+                                                                            }
+                                                                    )
+
+                                                                // Bottom handle - positioned at bottom end of shortened line
+                                                                Circle()
+                                                                    .fill(Color.red)
+                                                                    .frame(width: 12, height: 12)
+                                                                    .position(
+                                                                        x: overlayGeometry.size.width * playerViewModel.finishLineBottomX,
+                                                                        y: overlayGeometry.size.height * 0.9 // 10% from bottom
+                                                                    )
+                                                                    .gesture(
+                                                                        DragGesture()
+                                                                            .onChanged { value in
+                                                                                let newX = value.location.x / overlayGeometry.size.width
+                                                                                playerViewModel.setFinishLineBottomX(newX)
+                                                                            }
+                                                                    )
+
+                                                                // Debug quad at bottom left of VideoPlayer frame
+                                                                Rectangle()
+                                                                    .fill(Color.green)
+                                                                    .frame(width: 20, height: 20)
+                                                                    .position(
+                                                                        x: 20,
+                                                                        y: overlayGeometry.size.height - 20
+                                                                    )
+                                                            }
+                                                        }
+                                                    }
+                                                }
                                                 .scaleEffect(playerViewModel.zoomScale)
                                                 .offset(playerViewModel.zoomOffset)
+                                                .frame(width: videoWidth, height: videoHeight)
                                                 .clipped() // Clip zoomed content to frame bounds
-                                                .gesture(
-                                                    SimultaneousGesture(
-                                                        MagnificationGesture()
-                                                            .onChanged { scale in
-                                                                playerViewModel.setZoom(scale)
-                                                            },
-                                                        DragGesture()
-                                                            .onChanged { value in
-                                                                if playerViewModel.zoomScale > 1.0 {
-                                                                    playerViewModel.panVideo(by: CGSize(
-                                                                        width: value.translation.width * 0.5,
-                                                                        height: value.translation.height * 0.5
-                                                                    ))
-                                                                }
-                                                            }
-                                                    )
-                                                )
                                                 .onAppear {
                                                     if let url = captureManager.lastRecordedURL {
                                                         playerViewModel.loadVideo(url: url)
@@ -261,216 +342,6 @@ struct ContentView: View {
                                                     .padding(.trailing, -50)
                                                 }
 
-                                                // Pan controls positioned at bottom center
-                                                VStack {
-                                                    Spacer()
-                                                    Spacer()
-                                                // Pan controls (pushed down more) - only show when zoomed
-                                                if playerViewModel.zoomScale > 1.0 {
-                                                    HStack {
-                                                        Spacer()
-
-                                                        VStack(spacing: 8) {
-                                                            Text("PAN")
-                                                                .foregroundColor(.white)
-                                                                .font(.caption2)
-                                                                .fontWeight(.semibold)
-
-                                                            VStack(spacing: 6) {
-                                                                // Up arrow
-                                                                Button(action: {
-                                                                    if !playerViewModel.isPanningLongerThanThreshold {
-                                                                        playerViewModel.panVideo(by: CGSize(width: 0, height: -20))
-                                                                    }
-                                                                }) {
-                                                                    Image(systemName: "chevron.up")
-                                                                        .foregroundColor(.white)
-                                                                        .font(.body)
-                                                                        .frame(width: 32, height: 24)
-                                                                        .background(Color.gray.opacity(0.3))
-                                                                        .cornerRadius(4)
-                                                                }
-                                                                .buttonStyle(.plain)
-                                                                .help("Pan Up (Hold for continuous)")
-                                                                .onLongPressGesture(minimumDuration: 0.2, maximumDistance: 10) {
-                                                                    // This fires when long press is detected
-                                                                } onPressingChanged: { pressing in
-                                                                    if pressing {
-                                                                        playerViewModel.startContinuousPan(direction: CGSize(width: 0, height: -5))
-                                                                    } else {
-                                                                        playerViewModel.stopContinuousPan()
-                                                                    }
-                                                                }
-
-                                                                HStack(spacing: 6) {
-                                                                    // Left arrow
-                                                                    Button(action: {
-                                                                        if !playerViewModel.isPanningLongerThanThreshold {
-                                                                            playerViewModel.panVideo(by: CGSize(width: -20, height: 0))
-                                                                        }
-                                                                    }) {
-                                                                        Image(systemName: "chevron.left")
-                                                                            .foregroundColor(.white)
-                                                                            .font(.body)
-                                                                            .frame(width: 24, height: 32)
-                                                                            .background(Color.gray.opacity(0.3))
-                                                                            .cornerRadius(4)
-                                                                    }
-                                                                    .buttonStyle(.plain)
-                                                                    .help("Pan Left (Hold for continuous)")
-                                                                    .onLongPressGesture(minimumDuration: 0.2, maximumDistance: 10) {
-                                                                        // This fires when long press is detected
-                                                                    } onPressingChanged: { pressing in
-                                                                        if pressing {
-                                                                            playerViewModel.startContinuousPan(direction: CGSize(width: -5, height: 0))
-                                                                        } else {
-                                                                            playerViewModel.stopContinuousPan()
-                                                                        }
-                                                                    }
-
-                                                                    // Center/reset pan button
-                                                                    Button(action: { playerViewModel.zoomOffset = .zero }) {
-                                                                        Image(systemName: "dot.circle")
-                                                                            .foregroundColor(.white)
-                                                                            .font(.body)
-                                                                            .frame(width: 24, height: 24)
-                                                                            .background(Color.blue.opacity(0.6))
-                                                                            .cornerRadius(4)
-                                                                    }
-                                                                    .buttonStyle(.plain)
-                                                                    .help("Center View")
-
-                                                                    // Right arrow
-                                                                    Button(action: {
-                                                                        if !playerViewModel.isPanningLongerThanThreshold {
-                                                                            playerViewModel.panVideo(by: CGSize(width: 20, height: 0))
-                                                                        }
-                                                                    }) {
-                                                                        Image(systemName: "chevron.right")
-                                                                            .foregroundColor(.white)
-                                                                            .font(.body)
-                                                                            .frame(width: 24, height: 32)
-                                                                            .background(Color.gray.opacity(0.3))
-                                                                            .cornerRadius(4)
-                                                                    }
-                                                                    .buttonStyle(.plain)
-                                                                    .help("Pan Right (Hold for continuous)")
-                                                                    .onLongPressGesture(minimumDuration: 0.2, maximumDistance: 10) {
-                                                                        // This fires when long press is detected
-                                                                    } onPressingChanged: { pressing in
-                                                                        if pressing {
-                                                                            playerViewModel.startContinuousPan(direction: CGSize(width: 5, height: 0))
-                                                                        } else {
-                                                                            playerViewModel.stopContinuousPan()
-                                                                        }
-                                                                    }
-                                                                }
-
-                                                                // Down arrow
-                                                                Button(action: {
-                                                                    if !playerViewModel.isPanningLongerThanThreshold {
-                                                                        playerViewModel.panVideo(by: CGSize(width: 0, height: 20))
-                                                                    }
-                                                                }) {
-                                                                    Image(systemName: "chevron.down")
-                                                                        .foregroundColor(.white)
-                                                                        .font(.body)
-                                                                        .frame(width: 32, height: 24)
-                                                                        .background(Color.gray.opacity(0.3))
-                                                                        .cornerRadius(4)
-                                                                }
-                                                                .buttonStyle(.plain)
-                                                                .help("Pan Down (Hold for continuous)")
-                                                                .onLongPressGesture(minimumDuration: 0.2, maximumDistance: 10) {
-                                                                    // This fires when long press is detected
-                                                                } onPressingChanged: { pressing in
-                                                                    if pressing {
-                                                                        playerViewModel.startContinuousPan(direction: CGSize(width: 0, height: 5))
-                                                                    } else {
-                                                                        playerViewModel.stopContinuousPan()
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        .padding(8)
-                                                        .background(Color.black.opacity(0.7))
-                                                        .cornerRadius(8)
-
-                                                        Spacer()
-                                                    }
-                                                    .padding(.bottom, -50)
-                                                }
-                                                }
-                                            }
-
-                                            // Photo finish overlay
-                                            if playerViewModel.showPhotoFinishOverlay {
-                                                GeometryReader { geometry in
-                                                    ZStack {
-                                                        // Finish line - slightly smaller than video frame
-                                                        Path { path in
-                                                            let margin = geometry.size.height * 0.1 // 10% margin
-                                                            let topX = geometry.size.width * playerViewModel.finishLineTopX
-                                                            let topY: CGFloat = margin // 10% from top
-                                                            let bottomX = geometry.size.width * playerViewModel.finishLineBottomX
-                                                            let bottomY = geometry.size.height - margin // 10% from bottom
-
-                                                            path.move(to: CGPoint(x: topX, y: topY))
-                                                            path.addLine(to: CGPoint(x: bottomX, y: bottomY))
-                                                        }
-                                                        .stroke(Color.red, lineWidth: 3)
-                                                        .gesture(
-                                                            DragGesture()
-                                                                .onChanged { value in
-                                                                    let deltaX = value.translation.width / geometry.size.width
-                                                                    playerViewModel.moveFinishLineHorizontally(by: deltaX * 0.01)
-                                                                }
-                                                        )
-
-                                                        // Top handle - positioned at top end of shortened line
-                                                        Circle()
-                                                            .fill(Color.red)
-                                                            .frame(width: 12, height: 12)
-                                                            .position(
-                                                                x: geometry.size.width * playerViewModel.finishLineTopX,
-                                                                y: geometry.size.height * 0.1 // 10% from top
-                                                            )
-                                                            .gesture(
-                                                                DragGesture()
-                                                                    .onChanged { value in
-                                                                        let newX = value.location.x / geometry.size.width
-                                                                        playerViewModel.setFinishLineTopX(newX)
-                                                                    }
-                                                            )
-
-                                                        // Bottom handle - positioned at bottom end of shortened line
-                                                        Circle()
-                                                            .fill(Color.red)
-                                                            .frame(width: 12, height: 12)
-                                                            .position(
-                                                                x: geometry.size.width * playerViewModel.finishLineBottomX,
-                                                                y: geometry.size.height * 0.9 // 10% from bottom
-                                                            )
-                                                            .gesture(
-                                                                DragGesture()
-                                                                    .onChanged { value in
-                                                                        let newX = value.location.x / geometry.size.width
-                                                                        playerViewModel.setFinishLineBottomX(newX)
-                                                                    }
-                                                            )
-
-                                                        // Debug quad at bottom left of VideoPlayer frame
-                                                        // TODO: Re-enable for debugging coordinate alignment
-                                                        // Rectangle()
-                                                        //     .fill(Color.green)
-                                                        //     .frame(width: 20, height: 20)
-                                                        //     .position(
-                                                        //         x: 10, // 10px from left edge
-                                                        //         y: videoHeight - 10 // 10px from bottom of video area
-                                                        //     )
-
-                                                    }
-                                                }
                                             }
 
                                             // Show overlay when seeking outside video range

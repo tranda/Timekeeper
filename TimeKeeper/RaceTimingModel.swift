@@ -2,8 +2,23 @@ import Foundation
 import Combine
 import AVFoundation
 
-// Configuration constant - change this to adjust the number of lanes
-let MAX_LANES = 4
+// MARK: - App Configuration
+class AppConfig {
+    static let shared = AppConfig()
+
+    // Race configuration
+    var maxLanes: Int {
+        get {
+            let value = UserDefaults.standard.integer(forKey: "maxLanes")
+            return value > 0 ? value : 4  // Default to 4 if not set
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "maxLanes")
+        }
+    }
+
+    private init() {}
+}
 
 enum LaneStatus: String, Codable {
     case registered = "Registered"  // Default status before race
@@ -50,7 +65,7 @@ struct SessionData: Codable {
 
     init() {
         self.raceName = "Race"
-        self.teamNames = (1...MAX_LANES).map { "Lane \($0)" }
+        self.teamNames = (1...AppConfig.shared.maxLanes).map { "Lane \($0)" }
         self.videoStartInRace = 0
         self.finishEvents = []
         self.notes = ""

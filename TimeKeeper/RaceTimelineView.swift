@@ -561,6 +561,7 @@ struct RaceTimelineView: View {
                 topX: playerViewModel.finishLineTopX,
                 bottomX: playerViewModel.finishLineBottomX,
                 videoSize: videoSize,
+                uiHeightScale: 0.9,
                 zeroTolerance: true
             ) { success in
                 DispatchQueue.main.async {

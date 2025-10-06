@@ -114,6 +114,7 @@ class FrameExporter {
                 topX: topX,
                 bottomX: bottomX,
                 videoSize: videoSize,
+                uiHeightScale: uiHeightScale,
                 exact: zeroTolerance,
                 jpegQuality: jpegQuality,
                 outURL: outputURL,
@@ -122,7 +123,7 @@ class FrameExporter {
         }
     }
 
-    private func exportJPEGWithFinishLine(assetURL: URL, at seconds: Double, topX: Double, bottomX: Double, videoSize: CGSize, exact: Bool, jpegQuality: Double, outURL: URL, completion: @escaping (Bool) -> Void) async {
+    private func exportJPEGWithFinishLine(assetURL: URL, at seconds: Double, topX: Double, bottomX: Double, videoSize: CGSize, uiHeightScale: Double, exact: Bool, jpegQuality: Double, outURL: URL, completion: @escaping (Bool) -> Void) async {
         let asset = AVAsset(url: assetURL)
         let imageGenerator = AVAssetImageGenerator(asset: asset)
 
@@ -164,16 +165,20 @@ class FrameExporter {
             // Draw the original frame
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
 
-            // Calculate proper scaling for finish line overlay
+            // Calculate proper scaling for finish line overlay accounting for UI height scaling
+            // UI uses 90% height container with vertical centering
+            let effectiveHeight = Double(height) * uiHeightScale
+            let yOffset = (Double(height) - effectiveHeight) / 2
+
             // In Core Graphics, Y=0 is at the bottom, so we need to flip coordinates
-            // Position at exact edges to match UI
-            let lineTopY = Double(height) // Top edge (CG coordinates: height = top)
-            let lineBottomY = 0.0 // Bottom edge (CG coordinates: 0 = bottom)
+            // Map UI coordinates (top=0.1, bottom=0.9 of effective area) to CG coordinates
+            let lineTopY = yOffset + (effectiveHeight * 0.9) // UI top (10% margin) -> CG coordinates
+            let lineBottomY = yOffset + (effectiveHeight * 0.1) // UI bottom (10% margin) -> CG coordinates
             let lineTopX = Double(width) * topX
             let lineBottomX = Double(width) * bottomX
 
             // Use sizes that match the UI overlay appearance exactly
-            let lineThickness = 3.0 // UI uses lineWidth: 3
+            let lineThickness = 1.0 // UI uses lineWidth: 1
             let handleSize = 16.0 // Fixed handle size similar to UI
 
             // Debug logging for calculated positions
@@ -195,9 +200,10 @@ class FrameExporter {
             context.fillEllipse(in: CGRect(x: lineBottomX - halfHandle, y: lineBottomY - halfHandle, width: handleSize, height: handleSize))
 
             // Draw debug quad at bottom left (to match UI debug quad)
-            // TODO: Re-enable for debugging coordinate alignment
-            // context.setFillColor(CGColor(red: 0.0, green: 1.0, blue: 0.0, alpha: 1.0)) // Green quad
-            // context.fill(CGRect(x: 10, y: 10, width: 20, height: 20)) // 10 pixels from left and bottom edges
+            // Position within the effective UI area
+            context.setFillColor(CGColor(red: 0.0, green: 1.0, blue: 0.0, alpha: 1.0)) // Green quad
+            let debugQuadY = yOffset + (effectiveHeight * 0.1) - 30 // 10px from bottom of effective area
+            context.fill(CGRect(x: 10, y: debugQuadY, width: 20, height: 20))
 
             // Create final image
             guard let finalImage = context.makeImage() else {

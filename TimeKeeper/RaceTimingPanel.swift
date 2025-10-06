@@ -16,7 +16,7 @@ struct RaceTimingPanel: View {
     @State private var laneToOverwrite: String? = nil
     @State private var showNewRaceSheet = false
     @State private var newRaceName = ""
-    @State private var newTeamNames = (1...MAX_LANES).map { "Lane \($0)" }
+    @State private var newTeamNames = (1...AppConfig.shared.maxLanes).map { "Lane \($0)" }
     @State private var showResultsAlert = false
     @State private var resultsAlertTitle = ""
     @State private var resultsAlertMessage = ""
@@ -540,7 +540,7 @@ struct RaceTimingPanel: View {
                         .font(.headline)
 
                     VStack(spacing: 8) {
-                        ForEach(0..<MAX_LANES, id: \.self) { index in
+                        ForEach(0..<AppConfig.shared.maxLanes, id: \.self) { index in
                             HStack {
                                 Text("Lane \(index + 1):")
                                     .frame(width: 60, alignment: .trailing)
@@ -966,11 +966,11 @@ struct RaceTimingPanel: View {
         newRaceName = "\(selectedRace.raceNumber) - \(selectedRace.title)"
 
         // Clear existing team names and populate from race data
-        newTeamNames = (1...MAX_LANES).map { _ in "" } // Start with empty strings instead of "Lane X"
+        newTeamNames = (1...AppConfig.shared.maxLanes).map { _ in "" } // Start with empty strings instead of "Lane X"
 
         // Populate team names from race lanes
         for lane in selectedRace.lanes {
-            if lane.lane >= 1 && lane.lane <= MAX_LANES {
+            if lane.lane >= 1 && lane.lane <= AppConfig.shared.maxLanes {
                 newTeamNames[lane.lane - 1] = lane.team
             }
         }

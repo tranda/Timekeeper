@@ -4,6 +4,7 @@ import SwiftUI
 struct TimeKeeperApp: App {
     @State private var showingHelp = false
     @State private var showingAPIKeySetup = false
+    @State private var showingSettings = false
     @State private var apiKeyInput = ""
     @State private var showingRacePlanResult = false
     @State private var racePlanResultMessage = ""
@@ -65,9 +66,19 @@ struct TimeKeeperApp: App {
                 } message: {
                     Text(racePlanResultMessage)
                 }
+                .sheet(isPresented: $showingSettings) {
+                    SettingsView()
+                }
         }
         .windowResizability(.contentSize)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Preferences...") {
+                    showingSettings = true
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+
             CommandGroup(replacing: .help) {
                 Button("TimeKeeper Help") {
                     showingHelp = true
