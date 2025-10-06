@@ -20,6 +20,11 @@ class PlayerViewModel: ObservableObject {
     private var pinchStartScale: Double = 1.0
     private var isPinchGestureActive: Bool = false
 
+    // Line drag state
+    private var lineDragStartTopX: Double = 0.0
+    private var lineDragStartBottomX: Double = 0.0
+    private var isLineDragActive: Bool = false
+
     // Photo finish overlay
     @Published var showPhotoFinishOverlay = true
     @Published var finishLineTopX: Double = 0.5 // Normalized X position for top of line (0.0 to 1.0)
@@ -210,5 +215,30 @@ class PlayerViewModel: ObservableObject {
         let newBottomX = finishLineBottomX + deltaX
         finishLineTopX = max(0.0, min(1.0, newTopX))
         finishLineBottomX = max(0.0, min(1.0, newBottomX))
+    }
+
+    func startLineDrag() {
+        lineDragStartTopX = finishLineTopX
+        lineDragStartBottomX = finishLineBottomX
+        isLineDragActive = true
+    }
+
+    func updateLineDragWithDelta(startX: Double, currentX: Double) {
+        if !isLineDragActive {
+            startLineDrag()
+        }
+
+        // Calculate delta from the actual start location
+        let deltaX = currentX - startX
+
+        let newTopX = lineDragStartTopX + deltaX
+        let newBottomX = lineDragStartBottomX + deltaX
+
+        finishLineTopX = max(0.0, min(1.0, newTopX))
+        finishLineBottomX = max(0.0, min(1.0, newBottomX))
+    }
+
+    func endLineDrag() {
+        isLineDragActive = false
     }
 }

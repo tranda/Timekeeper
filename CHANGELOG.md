@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2025-01-07
+
+### Added
+- **Unified Zoom and Pan System**: Video and photo finish overlay now zoom/pan together as single unit
+- **Intuitive Gesture Controls**: Pinch-to-zoom and drag-to-pan with natural responsiveness
+- **Precise Finish Line Control**: 1px width line with exact mouse following for accurate measurement
+- **Smart Angle Preservation**: Line dragging maintains angle while following mouse movement
+- **Improved Export Alignment**: Fixed coordinate calculation between UI and exported images
+
+### Fixed
+- Photo finish overlay coordinates now properly align with exported images
+- Pinch zoom responsiveness improved, especially when starting from 1x zoom
+- Finish line dragging follows mouse pointer exactly while preserving set angles
+- Pan gesture state tracking prevents position jumping when starting new drags
+
 ## [0.5.1] - 2025-01-26
 
 ### Added

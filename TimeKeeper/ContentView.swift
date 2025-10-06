@@ -208,9 +208,12 @@ struct ContentView: View {
                                                                 .gesture(
                                                                     DragGesture()
                                                                         .onChanged { value in
-                                                                            let newX = value.location.x / overlayGeometry.size.width
-                                                                            playerViewModel.setFinishLineTopX(newX)
-                                                                            playerViewModel.setFinishLineBottomX(newX)
+                                                                            let startX = value.startLocation.x / overlayGeometry.size.width
+                                                                            let currentX = value.location.x / overlayGeometry.size.width
+                                                                            playerViewModel.updateLineDragWithDelta(startX: startX, currentX: currentX)
+                                                                        }
+                                                                        .onEnded { _ in
+                                                                            playerViewModel.endLineDrag()
                                                                         }
                                                                 )
 
