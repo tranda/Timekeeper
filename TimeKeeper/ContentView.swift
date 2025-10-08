@@ -31,7 +31,6 @@ struct ContentView: View {
     @StateObject private var captureManager = CaptureManager()
     @StateObject private var playerViewModel = PlayerViewModel()
     @StateObject private var timingModel = RaceTimingModel()
-    @State private var selectedDeviceID: String?
     @State private var outputFolderURL: URL?
     @State private var isRecording = false
     @State private var recordedVideoURL: URL?
@@ -53,52 +52,7 @@ struct ContentView: View {
 
                 // Camera and Output in compact horizontal layout
                 HStack(spacing: 20) {
-                    // Camera selection
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Camera")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        Picker("", selection: $selectedDeviceID) {
-                            Text("None").tag(nil as String?)
-                            ForEach(captureManager.availableDevices, id: \.uniqueID) { device in
-                                Text(device.localizedName).tag(device.uniqueID as String?)
-                            }
-                        }
-                        .labelsHidden()
-                        .frame(width: 220)
-                        .onChange(of: selectedDeviceID) { newDeviceID in
-                            if let deviceID = newDeviceID,
-                               let device = captureManager.availableDevices.first(where: { $0.uniqueID == deviceID }) {
-                                // Stop current session before switching
-                                if captureManager.isSessionRunning {
-                                    captureManager.stopSession()
-                                }
 
-                                // Small delay to ensure clean switch
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                                    captureManager.selectDevice(device)
-                                }
-                            }
-                        }
-                    }
-
-                    // Output folder
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Output Folder")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        HStack(spacing: 8) {
-                            Text(captureManager.outputDirectory?.lastPathComponent ?? "Desktop")
-                                .font(.system(size: 13))
-                                .foregroundColor(.primary)
-                                .lineLimit(1)
-                                .frame(width: 180, alignment: .leading)
-                            Button("Choose") {
-                                selectOutputFolder()
-                            }
-                            .font(.system(size: 12))
-                        }
-                    }
 
                     Spacer()
                 }
@@ -453,26 +407,7 @@ struct ContentView: View {
             // First refresh devices, then wait for them to be loaded
             captureManager.refreshDevices()
 
-            // Give more time for device enumeration to complete
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                // Create a local copy of devices to avoid mutation issues
-                let devices = captureManager.availableDevices
-
-                // Try to find and select the back camera first
-                let backCamera = devices.first { device in
-                    // Check for back camera indicators in the device name
-                    let name = device.localizedName.lowercased()
-                    return name.contains("back") ||
-                           name.contains("rear") ||
-                           (name.contains("iphone") && !name.contains("front"))
-                }
-
-                // Use back camera if found, otherwise use first available
-                if let preferredDevice = backCamera ?? devices.first {
-                    selectedDeviceID = preferredDevice.uniqueID
-                    captureManager.selectDevice(preferredDevice)
-                }
-            }
+            // Device auto-selection is now handled by CaptureManager
         }
         .onDisappear {
             // Clean up keyboard monitoring
@@ -487,19 +422,6 @@ struct ContentView: View {
         // This function is no longer used - recording is controlled by timing panel
     }
 
-    private func selectOutputFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.canCreateDirectories = true
-        panel.prompt = "Select Output Folder"
-
-        if panel.runModal() == .OK {
-            outputFolderURL = panel.url
-            captureManager.outputDirectory = panel.url
-            timingModel.outputDirectory = panel.url
-        }
-    }
 
     private func exportCurrentFrame() {
         guard let videoURL = recordedVideoURL,
