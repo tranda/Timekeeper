@@ -45,22 +45,11 @@ struct ContentView: View {
     var body: some View {
         HStack(spacing: 0) {
             // Left side - Controls
-            VStack(alignment: .leading, spacing: 20) {
+            VStack(alignment: .leading, spacing: 0) {
                 RaceTimingPanel(timingModel: timingModel, captureManager: captureManager, playerViewModel: playerViewModel, isReviewMode: $isReviewMode)
-
-                Divider()
-
-                // Camera and Output in compact horizontal layout
-                HStack(spacing: 20) {
-
-
-                    Spacer()
-                }
-
-                Spacer()
             }
             .frame(minWidth: 600, idealWidth: 700, maxWidth: 800)
-            .padding()
+            .padding(.horizontal)
 
             Divider()
 

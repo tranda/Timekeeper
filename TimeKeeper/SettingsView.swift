@@ -89,6 +89,16 @@ struct SettingsView: View {
                         .onChange(of: selectedDeviceID) { newDeviceID in
                             // Save selected device to UserDefaults
                             UserDefaults.standard.set(newDeviceID, forKey: "selectedCameraDevice")
+
+                            // Notify CaptureManager to switch to the new camera
+                            if let deviceID = newDeviceID,
+                               let device = availableDevices.first(where: { $0.uniqueID == deviceID }) {
+                                // Post notification for CaptureManager to switch cameras
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("CameraSwitchRequested"),
+                                    object: device
+                                )
+                            }
                         }
                     }
 

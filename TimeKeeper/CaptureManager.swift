@@ -54,6 +54,14 @@ class CaptureManager: NSObject, ObservableObject {
         // Don't refresh devices here - let ContentView do it after setup
         // But we can load the saved camera device ID for later use
         loadSavedCameraDevice()
+
+        // Listen for camera switch notifications from Settings
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCameraSwitchRequest(_:)),
+            name: NSNotification.Name("CameraSwitchRequested"),
+            object: nil
+        )
     }
 
     private func loadSavedCameraDevice() {
@@ -411,6 +419,20 @@ class CaptureManager: NSObject, ObservableObject {
         @unknown default:
             break
         }
+    }
+
+    @objc private func handleCameraSwitchRequest(_ notification: Notification) {
+        guard let device = notification.object as? AVCaptureDevice else {
+            print("⚠️ Invalid camera switch notification - no device provided")
+            return
+        }
+
+        print("🔄 Settings requested camera switch to: \(device.localizedName)")
+        selectDevice(device)
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 }
 

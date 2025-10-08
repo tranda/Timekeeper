@@ -37,4 +37,4 @@ Examples:
 - Major rewrite: 0.9.5 → 1.0.0
 - Beyond 9: 0.5.9 → 0.5.10 → 0.5.11...
 
-Current version: 0.6.1
+Current version: 0.7.0

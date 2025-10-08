@@ -403,26 +403,29 @@ struct RaceTimingPanel: View {
             }
             .frame(maxWidth: .infinity)
 
-            // Exported Images Selection
-            if timingModel.isRaceInitialized && !(timingModel.sessionData?.exportedImages.isEmpty ?? true) {
-                exportedImagesSection
-            }
-
-            // Send Results button (only show if race is initialized)
-            if timingModel.isRaceInitialized {
-                Button(action: sendRaceResults) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color.green)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                        Text("SEND RESULTS")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.white)
-                    }
+            // Bottom section with images and send button - scrollable if needed
+            VStack(spacing: 12) {
+                // Exported Images Selection
+                if timingModel.isRaceInitialized && !(timingModel.sessionData?.exportedImages.isEmpty ?? true) {
+                    exportedImagesSection
                 }
-                .buttonStyle(.plain)
-                .padding(.horizontal)
+
+                // Send Results button (only show if race is initialized)
+                if timingModel.isRaceInitialized {
+                    Button(action: sendRaceResults) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10)
+                                .fill(Color.green)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                            Text("SEND RESULTS")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal)
+                }
             }
 
             Spacer()
@@ -1259,17 +1262,19 @@ struct RaceTimingPanel: View {
             Divider()
 
             Text("Exported Images (\(timingModel.getSelectedImages().count) selected)")
-                .font(.headline)
+                .font(.subheadline)
+                .fontWeight(.medium)
 
             if timingModel.exportedImages.isEmpty {
                 Text("No images exported yet")
                     .font(.caption)
                     .foregroundColor(.secondary)
+                    .frame(height: 40)
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 4) {
+                    LazyVStack(alignment: .leading, spacing: 2) {
                         ForEach(timingModel.exportedImages.reversed(), id: \.self) { imagePath in
-                            HStack {
+                            HStack(spacing: 8) {
                                 Toggle("", isOn: Binding(
                                     get: { timingModel.isImageSelected(imagePath) },
                                     set: { _ in timingModel.toggleImageSelection(imagePath) }
@@ -1287,10 +1292,13 @@ struct RaceTimingPanel: View {
                                     .foregroundColor(.secondary)
                             }
                             .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
                         }
                     }
                 }
-                .frame(maxHeight: 120)
+                .frame(maxHeight: 100)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(4)
             }
         }
     }
