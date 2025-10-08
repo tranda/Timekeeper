@@ -183,7 +183,7 @@ class FrameExporter {
             print("  lineBottomX: \(lineBottomX), lineBottomY: \(lineBottomY)")
             print("  lineThickness: \(lineThickness), handleSize: \(handleSize)")
 
-            context.setStrokeColor(CGColor(red: 1.0, green: 0.0, blue: 0.0, alpha: 1.0)) // Red line
+            context.setStrokeColor(CGColor(red: 1.0, green: 1.0, blue: 0.0, alpha: 1.0)) // Red line
             context.setLineWidth(CGFloat(lineThickness))
             context.move(to: CGPoint(x: lineTopX, y: lineTopY))
             context.addLine(to: CGPoint(x: lineBottomX, y: lineBottomY))

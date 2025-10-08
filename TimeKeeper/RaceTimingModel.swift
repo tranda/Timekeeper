@@ -97,6 +97,10 @@ class RaceTimingModel: ObservableObject {
         return String(format: "%02d:%02d.%03d", minutes, seconds, milliseconds)
     }
 
+    var exportedImages: [String] {
+        return sessionData?.exportedImages ?? []
+    }
+
     func startRace() {
         raceStartTime = Date()
         // Don't create new SessionData here - it was already initialized with the race name

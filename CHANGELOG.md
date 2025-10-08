@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.2] - 2025-01-08
+
+### Added
+- **Image Selection UI**: Complete interface for selecting exported images to send to server
+  - Individual checkboxes for each exported image with filename and timestamp
+  - Latest exported image automatically selected by default
+  - "Send Selected" button with server upload functionality
+  - Scrollable list showing most recent images first
+
+### Fixed
+- **Unified Zoom/Pan for Photo Finish**: Photo finish overlay now zooms and pans together with video
+  - Fixed finish line overlay positioning to move with video transforms
+  - Eliminated overlay drift when zooming or panning video
+  - Maintained relative position accuracy during all zoom/pan operations
+  - Enhanced visual consistency between UI display and exported coordinates
+
+### Improved
+- **Visual Consistency**: Changed finish line color to yellow in both UI and exported images
+- **Content Clipping**: Enabled proper clipping for zoomed video content within frame bounds
+- **Code Cleanup**: Removed deprecated finish line overlay code and debug elements
+
 ## [0.6.1] - 2025-01-07
 
 ### Fixed

@@ -209,27 +209,26 @@ struct ContentView: View {
                                                                 .cornerRadius(8)
                                                         )
 
-                                                    // Red finish line overlay - HIDDEN for testing
-                                                    if false { // playerViewModel.showPhotoFinishOverlay {
-                                                        GeometryReader { overlayGeometry in
+                                                    // Photo finish overlay positioned relative to video player
+                                                    if playerViewModel.showPhotoFinishOverlay {
+                                                        GeometryReader { videoGeometry in
                                                             ZStack {
-                                                                // Finish line - slightly smaller than video frame
+                                                                // Finish line - positioned at edges for Y coordinate testing
                                                                 Path { path in
-                                                                    let margin = overlayGeometry.size.height * 0.1 // 10% margin
-                                                                    let topX = overlayGeometry.size.width * playerViewModel.finishLineTopX
-                                                                    let topY: CGFloat = margin // 10% from top
-                                                                    let bottomX = overlayGeometry.size.width * playerViewModel.finishLineBottomX
-                                                                    let bottomY = overlayGeometry.size.height - margin // 10% from bottom
+                                                                    let topX = videoGeometry.size.width * playerViewModel.finishLineTopX
+                                                                    let topY: CGFloat = 0 // Top edge
+                                                                    let bottomX = videoGeometry.size.width * playerViewModel.finishLineBottomX
+                                                                    let bottomY = videoGeometry.size.height // Bottom edge
 
                                                                     path.move(to: CGPoint(x: topX, y: topY))
                                                                     path.addLine(to: CGPoint(x: bottomX, y: bottomY))
                                                                 }
-                                                                .stroke(Color.red, lineWidth: 1)
+                                                                .stroke(Color.yellow, lineWidth: 1)
                                                                 .gesture(
                                                                     DragGesture()
                                                                         .onChanged { value in
-                                                                            let startX = value.startLocation.x / overlayGeometry.size.width
-                                                                            let currentX = value.location.x / overlayGeometry.size.width
+                                                                            let startX = value.startLocation.x / videoGeometry.size.width
+                                                                            let currentX = value.location.x / videoGeometry.size.width
                                                                             playerViewModel.updateLineDragWithDelta(startX: startX, currentX: currentX)
                                                                         }
                                                                         .onEnded { _ in
@@ -237,124 +236,50 @@ struct ContentView: View {
                                                                         }
                                                                 )
 
-                                                                // Top handle - positioned at top end of shortened line
+                                                                // Top handle - positioned at top edge
                                                                 Circle()
                                                                     .fill(Color.red)
                                                                     .frame(width: 12, height: 12)
                                                                     .position(
-                                                                        x: overlayGeometry.size.width * playerViewModel.finishLineTopX,
-                                                                        y: overlayGeometry.size.height * 0.1 // 10% from top
+                                                                        x: videoGeometry.size.width * playerViewModel.finishLineTopX,
+                                                                        y: 0 // Top edge
                                                                     )
                                                                     .gesture(
                                                                         DragGesture()
                                                                             .onChanged { value in
-                                                                                let newX = value.location.x / overlayGeometry.size.width
+                                                                                let newX = value.location.x / videoGeometry.size.width
                                                                                 playerViewModel.setFinishLineTopX(newX)
                                                                             }
                                                                     )
 
-                                                                // Bottom handle - positioned at bottom end of shortened line
+                                                                // Bottom handle - positioned at bottom edge
                                                                 Circle()
                                                                     .fill(Color.red)
                                                                     .frame(width: 12, height: 12)
                                                                     .position(
-                                                                        x: overlayGeometry.size.width * playerViewModel.finishLineBottomX,
-                                                                        y: overlayGeometry.size.height * 0.9 // 10% from bottom
+                                                                        x: videoGeometry.size.width * playerViewModel.finishLineBottomX,
+                                                                        y: videoGeometry.size.height // Bottom edge
                                                                     )
                                                                     .gesture(
                                                                         DragGesture()
                                                                             .onChanged { value in
-                                                                                let newX = value.location.x / overlayGeometry.size.width
+                                                                                let newX = value.location.x / videoGeometry.size.width
                                                                                 playerViewModel.setFinishLineBottomX(newX)
                                                                             }
                                                                     )
 
-                                                                // Debug quad at bottom left corner
-                                                                Rectangle()
-                                                                    .fill(Color.green)
-                                                                    .frame(width: 10, height: 10)
-                                                                    .position(
-                                                                        x: 10,
-                                                                        y: overlayGeometry.size.height - 10
-                                                                    )
-                                                                    .zIndex(100) // Ensure it's on top
                                                             }
                                                         }
                                                     }
+
                                                 }
                                                 .scaleEffect(playerViewModel.zoomScale)
                                                 .offset(playerViewModel.zoomOffset)
                                                 .frame(width: videoWidth, height: videoHeight)
-                                                // .clipped() // Clip zoomed content to frame bounds - disabled to debug
+                                                .clipped() // Clip zoomed content to frame bounds - disabled to debug
                                                 .overlay(
-                                                    ZStack {
-                                                        // Red rectangle outline
-                                                        Rectangle()
-                                                            .stroke(Color.red, lineWidth: 1)
-
-                                                        // Photo finish overlay positioned relative to red rectangle
-                                                        if playerViewModel.showPhotoFinishOverlay {
-                                                            GeometryReader { redRectGeometry in
-                                                                ZStack {
-                                                                    // Finish line - positioned at edges for Y coordinate testing
-                                                                    Path { path in
-                                                                        let topX = redRectGeometry.size.width * playerViewModel.finishLineTopX
-                                                                        let topY: CGFloat = 0 // Top edge
-                                                                        let bottomX = redRectGeometry.size.width * playerViewModel.finishLineBottomX
-                                                                        let bottomY = redRectGeometry.size.height // Bottom edge
-
-                                                                        path.move(to: CGPoint(x: topX, y: topY))
-                                                                        path.addLine(to: CGPoint(x: bottomX, y: bottomY))
-                                                                    }
-                                                                    .stroke(Color.yellow, lineWidth: 1)
-                                                                    .gesture(
-                                                                        DragGesture()
-                                                                            .onChanged { value in
-                                                                                let startX = value.startLocation.x / redRectGeometry.size.width
-                                                                                let currentX = value.location.x / redRectGeometry.size.width
-                                                                                playerViewModel.updateLineDragWithDelta(startX: startX, currentX: currentX)
-                                                                            }
-                                                                            .onEnded { _ in
-                                                                                playerViewModel.endLineDrag()
-                                                                            }
-                                                                    )
-
-                                                                    // Top handle - positioned at top edge
-                                                                    Circle()
-                                                                        .fill(Color.red)
-                                                                        .frame(width: 12, height: 12)
-                                                                        .position(
-                                                                            x: redRectGeometry.size.width * playerViewModel.finishLineTopX,
-                                                                            y: 0 // Top edge
-                                                                        )
-                                                                        .gesture(
-                                                                            DragGesture()
-                                                                                .onChanged { value in
-                                                                                    let newX = value.location.x / redRectGeometry.size.width
-                                                                                    playerViewModel.setFinishLineTopX(newX)
-                                                                                }
-                                                                        )
-
-                                                                    // Bottom handle - positioned at bottom edge
-                                                                    Circle()
-                                                                        .fill(Color.red)
-                                                                        .frame(width: 12, height: 12)
-                                                                        .position(
-                                                                            x: redRectGeometry.size.width * playerViewModel.finishLineBottomX,
-                                                                            y: redRectGeometry.size.height // Bottom edge
-                                                                        )
-                                                                        .gesture(
-                                                                            DragGesture()
-                                                                                .onChanged { value in
-                                                                                    let newX = value.location.x / redRectGeometry.size.width
-                                                                                    playerViewModel.setFinishLineBottomX(newX)
-                                                                                }
-                                                                        )
-
-                                                                }
-                                                            }
-                                                        }
-                                                    }
+                                                    Rectangle()
+                                                        .stroke(Color.yellow, lineWidth: 1)
                                                 )
                                                 .onAppear {
                                                     if let url = captureManager.lastRecordedURL {

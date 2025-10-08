@@ -1,4 +1,18 @@
 import SwiftUI
+
+struct CheckboxToggleStyle: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack {
+            Image(systemName: configuration.isOn ? "checkmark.square.fill" : "square")
+                .foregroundColor(configuration.isOn ? .blue : .secondary)
+                .onTapGesture {
+                    configuration.isOn.toggle()
+                }
+
+            configuration.label
+        }
+    }
+}
 import Combine
 import AppKit
 import AVFoundation
@@ -1222,12 +1236,98 @@ struct RaceTimingPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
 
-            Text("Exported Images (\(timingModel.getSelectedImages().count) selected)")
-                .font(.headline)
+            HStack {
+                Text("Exported Images (\(timingModel.getSelectedImages().count) selected)")
+                    .font(.headline)
 
-            Text("Basic image selection functionality - checkboxes coming soon")
-                .font(.caption)
-                .foregroundColor(.secondary)
+                Spacer()
+
+                if !timingModel.exportedImages.isEmpty {
+                    Button("Send Selected") {
+                        sendSelectedImages()
+                    }
+                    .disabled(timingModel.getSelectedImages().isEmpty || timingModel.sessionData?.raceId == nil)
+                }
+            }
+
+            if timingModel.exportedImages.isEmpty {
+                Text("No images exported yet")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 4) {
+                        ForEach(timingModel.exportedImages.reversed(), id: \.self) { imagePath in
+                            HStack {
+                                Toggle("", isOn: Binding(
+                                    get: { timingModel.isImageSelected(imagePath) },
+                                    set: { _ in timingModel.toggleImageSelection(imagePath) }
+                                ))
+                                .toggleStyle(CheckboxToggleStyle())
+
+                                Text(URL(fileURLWithPath: imagePath).lastPathComponent)
+                                    .font(.caption)
+                                    .lineLimit(1)
+
+                                Spacer()
+
+                                Text(formatImageDate(imagePath))
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.horizontal, 4)
+                        }
+                    }
+                }
+                .frame(maxHeight: 120)
+            }
+        }
+    }
+
+    private func formatImageDate(_ imagePath: String) -> String {
+        let url = URL(fileURLWithPath: imagePath)
+        do {
+            let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
+            if let creationDate = attributes[.creationDate] as? Date {
+                let formatter = DateFormatter()
+                formatter.timeStyle = .medium
+                return formatter.string(from: creationDate)
+            }
+        } catch {
+            // Ignore error, fall back to default
+        }
+        return ""
+    }
+
+    private func sendSelectedImages() {
+        guard let sessionData = timingModel.sessionData,
+              let raceId = sessionData.raceId else {
+            print("Error: No race ID available for sending images")
+            return
+        }
+
+        let selectedImages = timingModel.getSelectedImages()
+        guard !selectedImages.isEmpty else {
+            print("Error: No images selected for sending")
+            return
+        }
+
+        print("Sending \(selectedImages.count) selected images to server...")
+
+        racePlanService.submitRaceResultsWithImages(
+            raceId: raceId,
+            sessionData: sessionData,
+            finishEvents: timingModel.finishEvents,
+            imagePaths: selectedImages
+        ) { result in
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let response):
+                    print("Images sent successfully: \(response)")
+                case .failure(let error):
+                    print("Error sending images: \(error.localizedDescription)")
+                }
+            }
         }
     }
 
