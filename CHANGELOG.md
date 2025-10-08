@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2025-01-07
+
+### Fixed
+- **Perfect Export Coordinate Alignment**: Fixed Y coordinate calculation to match UI positioning exactly
+- **16:9 Video Display**: Removed letterboxing for 1920×1080 videos in 16:9 container for perfect fit
+- **Edge Positioning**: Updated finish line to position at absolute top/bottom edges for precise measurement
+- **Simplified Export Logic**: Removed 90% height scaling and margin calculations for direct coordinate mapping
+- **Clean Interface**: Removed debug elements for production-ready appearance
+
 ## [0.6.0] - 2025-01-07
 
 ### Added

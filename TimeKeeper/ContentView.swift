@@ -150,8 +150,24 @@ struct ContentView: View {
                                         VStack {
                                             // Container view that's 90% of parent size
                                             GeometryReader { geometry in
-                                            let videoWidth = geometry.size.width
-                                            let videoHeight = geometry.size.height
+                                            // Calculate 16:9 aspect ratio container
+                                            let aspectRatio = 16.0 / 9.0
+                                            let availableWidth = geometry.size.width
+                                            let availableHeight = geometry.size.height
+
+                                            let (videoWidth, videoHeight): (CGFloat, CGFloat) = {
+                                                if availableWidth / availableHeight > aspectRatio {
+                                                    // Available area is wider than 16:9, constrain by height
+                                                    let height = availableHeight
+                                                    let width = height * aspectRatio
+                                                    return (width, height)
+                                                } else {
+                                                    // Available area is taller than 16:9, constrain by width
+                                                    let width = availableWidth
+                                                    let height = width / aspectRatio
+                                                    return (width, height)
+                                                }
+                                            }()
 
                                             ZStack {
                                                 // Background for pan gestures - invisible overlay to capture pan gestures
@@ -184,13 +200,17 @@ struct ContentView: View {
                                                 ZStack {
                                                     AVPlayerView(player: playerViewModel.player)
                                                         .background(Color.black)
-                                                        .aspectRatio(contentMode: .fit)  // Show full video with letterboxing
                                                         .cornerRadius(8)
                                                         .focusable(false)  // Disable keyboard focus and shortcuts
                                                         .allowsHitTesting(false) // Prevent video from intercepting gestures
+                                                        .overlay(
+                                                            Rectangle()
+                                                                .stroke(Color.red, lineWidth: 1)
+                                                                .cornerRadius(8)
+                                                        )
 
-                                                    // Photo finish overlay
-                                                    if playerViewModel.showPhotoFinishOverlay {
+                                                    // Red finish line overlay - HIDDEN for testing
+                                                    if false { // playerViewModel.showPhotoFinishOverlay {
                                                         GeometryReader { overlayGeometry in
                                                             ZStack {
                                                                 // Finish line - slightly smaller than video frame
@@ -249,14 +269,15 @@ struct ContentView: View {
                                                                             }
                                                                     )
 
-                                                                // Debug quad at bottom left of VideoPlayer frame
+                                                                // Debug quad at bottom left corner
                                                                 Rectangle()
                                                                     .fill(Color.green)
-                                                                    .frame(width: 20, height: 20)
+                                                                    .frame(width: 10, height: 10)
                                                                     .position(
-                                                                        x: 20,
-                                                                        y: overlayGeometry.size.height - 20
+                                                                        x: 10,
+                                                                        y: overlayGeometry.size.height - 10
                                                                     )
+                                                                    .zIndex(100) // Ensure it's on top
                                                             }
                                                         }
                                                     }
@@ -264,7 +285,77 @@ struct ContentView: View {
                                                 .scaleEffect(playerViewModel.zoomScale)
                                                 .offset(playerViewModel.zoomOffset)
                                                 .frame(width: videoWidth, height: videoHeight)
-                                                .clipped() // Clip zoomed content to frame bounds
+                                                // .clipped() // Clip zoomed content to frame bounds - disabled to debug
+                                                .overlay(
+                                                    ZStack {
+                                                        // Red rectangle outline
+                                                        Rectangle()
+                                                            .stroke(Color.red, lineWidth: 1)
+
+                                                        // Photo finish overlay positioned relative to red rectangle
+                                                        if playerViewModel.showPhotoFinishOverlay {
+                                                            GeometryReader { redRectGeometry in
+                                                                ZStack {
+                                                                    // Finish line - positioned at edges for Y coordinate testing
+                                                                    Path { path in
+                                                                        let topX = redRectGeometry.size.width * playerViewModel.finishLineTopX
+                                                                        let topY: CGFloat = 0 // Top edge
+                                                                        let bottomX = redRectGeometry.size.width * playerViewModel.finishLineBottomX
+                                                                        let bottomY = redRectGeometry.size.height // Bottom edge
+
+                                                                        path.move(to: CGPoint(x: topX, y: topY))
+                                                                        path.addLine(to: CGPoint(x: bottomX, y: bottomY))
+                                                                    }
+                                                                    .stroke(Color.yellow, lineWidth: 1)
+                                                                    .gesture(
+                                                                        DragGesture()
+                                                                            .onChanged { value in
+                                                                                let startX = value.startLocation.x / redRectGeometry.size.width
+                                                                                let currentX = value.location.x / redRectGeometry.size.width
+                                                                                playerViewModel.updateLineDragWithDelta(startX: startX, currentX: currentX)
+                                                                            }
+                                                                            .onEnded { _ in
+                                                                                playerViewModel.endLineDrag()
+                                                                            }
+                                                                    )
+
+                                                                    // Top handle - positioned at top edge
+                                                                    Circle()
+                                                                        .fill(Color.red)
+                                                                        .frame(width: 12, height: 12)
+                                                                        .position(
+                                                                            x: redRectGeometry.size.width * playerViewModel.finishLineTopX,
+                                                                            y: 0 // Top edge
+                                                                        )
+                                                                        .gesture(
+                                                                            DragGesture()
+                                                                                .onChanged { value in
+                                                                                    let newX = value.location.x / redRectGeometry.size.width
+                                                                                    playerViewModel.setFinishLineTopX(newX)
+                                                                                }
+                                                                        )
+
+                                                                    // Bottom handle - positioned at bottom edge
+                                                                    Circle()
+                                                                        .fill(Color.red)
+                                                                        .frame(width: 12, height: 12)
+                                                                        .position(
+                                                                            x: redRectGeometry.size.width * playerViewModel.finishLineBottomX,
+                                                                            y: redRectGeometry.size.height // Bottom edge
+                                                                        )
+                                                                        .gesture(
+                                                                            DragGesture()
+                                                                                .onChanged { value in
+                                                                                    let newX = value.location.x / redRectGeometry.size.width
+                                                                                    playerViewModel.setFinishLineBottomX(newX)
+                                                                                }
+                                                                        )
+
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                )
                                                 .onAppear {
                                                     if let url = captureManager.lastRecordedURL {
                                                         playerViewModel.loadVideo(url: url)

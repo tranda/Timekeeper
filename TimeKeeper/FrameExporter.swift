@@ -165,15 +165,11 @@ class FrameExporter {
             // Draw the original frame
             context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
 
-            // Calculate proper scaling for finish line overlay accounting for UI height scaling
-            // UI uses 90% height container with vertical centering
-            let effectiveHeight = Double(height) * uiHeightScale
-            let yOffset = (Double(height) - effectiveHeight) / 2
-
-            // In Core Graphics, Y=0 is at the bottom, so we need to flip coordinates
-            // Map UI coordinates (top=0.1, bottom=0.9 of effective area) to CG coordinates
-            let lineTopY = yOffset + (effectiveHeight * 0.9) // UI top (10% margin) -> CG coordinates
-            let lineBottomY = yOffset + (effectiveHeight * 0.1) // UI bottom (10% margin) -> CG coordinates
+            // Direct coordinate mapping - no margins, no scaling
+            // UI: Y=0 (top) to Y=height (bottom)
+            // Core Graphics: Y=0 (bottom) to Y=height (top) - coordinates are flipped
+            let lineTopY = Double(height)  // UI top edge -> CG top (Y=height)
+            let lineBottomY = 0.0          // UI bottom edge -> CG bottom (Y=0)
             let lineTopX = Double(width) * topX
             let lineBottomX = Double(width) * bottomX
 
@@ -199,11 +195,6 @@ class FrameExporter {
             context.fillEllipse(in: CGRect(x: lineTopX - halfHandle, y: lineTopY - halfHandle, width: handleSize, height: handleSize))
             context.fillEllipse(in: CGRect(x: lineBottomX - halfHandle, y: lineBottomY - halfHandle, width: handleSize, height: handleSize))
 
-            // Draw debug quad at bottom left (to match UI debug quad)
-            // Position within the effective UI area
-            context.setFillColor(CGColor(red: 0.0, green: 1.0, blue: 0.0, alpha: 1.0)) // Green quad
-            let debugQuadY = yOffset + (effectiveHeight * 0.1) - 30 // 10px from bottom of effective area
-            context.fill(CGRect(x: 10, y: debugQuadY, width: 20, height: 20))
 
             // Create final image
             guard let finalImage = context.makeImage() else {
