@@ -52,20 +52,48 @@ class CaptureManager: NSObject, ObservableObject {
         }
 
         // Don't refresh devices here - let ContentView do it after setup
+        // But we can load the saved camera device ID for later use
+        loadSavedCameraDevice()
+    }
+
+    private func loadSavedCameraDevice() {
+        // Load and auto-select the saved camera device when devices are available
+        if let savedDeviceID = UserDefaults.standard.string(forKey: "selectedCameraDevice") {
+            print("📹 Saved camera device ID: \(savedDeviceID)")
+            // Will be applied when refreshDevices() is called
+        }
+    }
+
+    private func positionString(_ position: AVCaptureDevice.Position) -> String {
+        switch position {
+        case .front: return "Front"
+        case .back: return "Back"
+        case .unspecified: return "Unspecified"
+        @unknown default: return "Unknown"
+        }
     }
 
     func refreshDevices() {
         let discoverySession = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInWideAngleCamera, .externalUnknown],
+            deviceTypes: [
+                .builtInWideAngleCamera,
+                .externalUnknown
+            ],
             mediaType: .video,
             position: .unspecified
         )
 
         let devices = Array(discoverySession.devices)
-        print("Found devices:")
+        print("=== CAMERA DEVICE DISCOVERY DEBUG ===")
+        print("Total devices found: \(devices.count)")
         for device in devices {
-            print("  - \(device.localizedName): \(device.uniqueID) [Position: \(device.position.rawValue)]")
+            print("  - Name: \(device.localizedName)")
+            print("    ID: \(device.uniqueID)")
+            print("    Position: \(device.position.rawValue) (\(positionString(device.position)))")
+            print("    Connected: \(device.isConnected)")
+            print("    ---")
         }
+        print("======================================")
 
         // Sort devices to prefer back camera - do this before dispatching
         let sortedDevices = devices.sorted { device1, device2 in
@@ -82,18 +110,49 @@ class CaptureManager: NSObject, ObservableObject {
 
         DispatchQueue.main.async { [weak self] in
             self?.availableDevices = sortedDevices
+
+            print("=== CAMERA AUTO-SELECTION DEBUG ===")
+            let savedDeviceID = UserDefaults.standard.string(forKey: "selectedCameraDevice")
+            print("Saved device ID: \(savedDeviceID ?? "None")")
+
+            // Auto-select saved device if available, otherwise select first available device
+            if let savedDeviceID = savedDeviceID,
+               let savedDevice = sortedDevices.first(where: { $0.uniqueID == savedDeviceID }) {
+                print("✅ Found saved camera: \(savedDevice.localizedName)")
+                print("📹 Auto-selecting saved camera...")
+                self?.selectDevice(savedDevice)
+            } else if let firstDevice = sortedDevices.first {
+                print("⚠️ No saved camera found, using first available")
+                print("📹 Auto-selecting first camera: \(firstDevice.localizedName)")
+                self?.selectDevice(firstDevice)
+                // Save this as the default
+                UserDefaults.standard.set(firstDevice.uniqueID, forKey: "selectedCameraDevice")
+                print("💾 Saved device ID: \(firstDevice.uniqueID)")
+            } else {
+                print("❌ No cameras available to select")
+            }
+            print("===================================")
         }
     }
 
     func selectDevice(_ device: AVCaptureDevice) {
         print("Selecting device: \(device.localizedName) - ID: \(device.uniqueID)")
-        DispatchQueue.main.async { [weak self] in
-            self?.selectedDevice = device
+
+        // Set selectedDevice on main queue, avoiding deadlock if already on main queue
+        if Thread.isMainThread {
+            selectedDevice = device
+            print("📱 Device set as selectedDevice: \(device.localizedName) (main thread)")
+        } else {
+            DispatchQueue.main.sync { [weak self] in
+                self?.selectedDevice = device
+                print("📱 Device set as selectedDevice: \(device.localizedName) (sync to main)")
+            }
         }
 
         // Use the serial queue for session configuration
         sessionQueue.async { [weak self] in
-            self?.configureSession { success in
+            print("🔧 Starting session configuration on session queue...")
+            self?.configureSession(device: device) { success in
                 if success {
                     print("Successfully configured session for: \(device.localizedName)")
                     self?.startSessionIfNeeded()
@@ -116,15 +175,13 @@ class CaptureManager: NSObject, ObservableObject {
         }
     }
 
-    func configureSession(completion: @escaping (Bool) -> Void) {
-        guard let device = selectedDevice else {
-            DispatchQueue.main.async {
-                completion(false)
-            }
-            return
-        }
+    func configureSession(device: AVCaptureDevice, completion: @escaping (Bool) -> Void) {
+        print("🔧 ConfigureSession called with device: \(device.localizedName)")
 
-        print("Configuring session with device: \(device.localizedName)")
+        print("=== SESSION CONFIGURATION DEBUG ===")
+        print("🔧 Configuring session with device: \(device.localizedName)")
+        print("🔧 Device ID: \(device.uniqueID)")
+        print("🔧 Device connected: \(device.isConnected)")
 
         // Create session if needed - do this synchronously to avoid race conditions
         if captureSession == nil {
@@ -168,23 +225,33 @@ class CaptureManager: NSObject, ObservableObject {
         }
 
         do {
+            print("🔧 Creating device input...")
             let deviceInput = try AVCaptureDeviceInput(device: device)
+            print("✅ Device input created successfully")
 
             if session.canAddInput(deviceInput) {
+                print("✅ Can add device input to session")
                 session.addInput(deviceInput)
                 currentDeviceInput = deviceInput
+                print("✅ Device input added to session")
             } else {
+                print("❌ Cannot add device input to session")
                 session.commitConfiguration()
+                print("================================")
                 completion(false)
                 return
             }
 
+            print("🔧 Creating movie output...")
             let movieOutput = AVCaptureMovieFileOutput()
             movieOutput.movieFragmentInterval = CMTime(seconds: 1, preferredTimescale: 1)
+            print("✅ Movie output created")
 
             if session.canAddOutput(movieOutput) {
+                print("✅ Can add movie output to session")
                 session.addOutput(movieOutput)
                 movieFileOutput = movieOutput
+                print("✅ Movie output added to session")
 
                 if let connection = movieOutput.connection(with: .video) {
                     // Check current dimensions
@@ -211,9 +278,17 @@ class CaptureManager: NSObject, ObservableObject {
                     }
                     #endif
                 }
+            } else {
+                print("❌ Cannot add movie output to session")
+                session.commitConfiguration()
+                print("================================")
+                completion(false)
+                return
             }
 
-                session.commitConfiguration()
+            session.commitConfiguration()
+            print("✅ Session configuration completed successfully")
+            print("================================")
 
             DispatchQueue.main.async {
                 completion(true)
