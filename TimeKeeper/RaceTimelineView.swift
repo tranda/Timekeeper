@@ -426,7 +426,7 @@ struct RaceTimelineView: View {
         .alert("Export Complete", isPresented: $showExportSuccess) {
             Button("OK") { }
         } message: {
-            Text("Image exported successfully to Desktop")
+            Text("Image exported successfully to output folder")
         }
         .onChange(of: triggerLaneSelection) { newValue in
             if newValue {
@@ -529,9 +529,9 @@ struct RaceTimelineView: View {
         if playerViewModel.showPhotoFinishOverlay {
             let fileName = "\(raceName)-photo_finish-\(timeString).jpg"
 
-            // Save to Desktop
-            let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-            let outputURL = desktopURL.appendingPathComponent(fileName)
+            // Save to output directory (same as race session)
+            let outputDirectory = timingModel.outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            let outputURL = outputDirectory.appendingPathComponent(fileName)
 
             // Get actual video dimensions
             guard let currentItem = playerViewModel.player.currentItem,
@@ -575,9 +575,9 @@ struct RaceTimelineView: View {
         } else {
             let fileName = "\(raceName)-\(timeString).jpg"
 
-            // Save to Desktop
-            let desktopURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
-            let outputURL = desktopURL.appendingPathComponent(fileName)
+            // Save to output directory (same as race session)
+            let outputDirectory = timingModel.outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            let outputURL = outputDirectory.appendingPathComponent(fileName)
 
             // Standard export without overlay
             exporter.exportFrame(from: videoURL, at: videoTime, to: outputURL, zeroTolerance: true) { success in

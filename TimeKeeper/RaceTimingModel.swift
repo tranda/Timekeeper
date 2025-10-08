@@ -98,7 +98,12 @@ class RaceTimingModel: ObservableObject {
     }
 
     var exportedImages: [String] {
-        return sessionData?.exportedImages ?? []
+        let filenames = sessionData?.exportedImages ?? []
+        // Convert filenames back to full paths (in the output directory)
+        let outputDir = outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        return filenames.map { filename in
+            outputDir.appendingPathComponent(filename).path
+        }
     }
 
     func startRace() {
@@ -238,9 +243,11 @@ class RaceTimingModel: ObservableObject {
     }
 
     func addExportedImage(_ imagePath: String) {
-        sessionData?.exportedImages.append(imagePath)
+        // Store only the filename, not the full path (images are in same directory as JSON)
+        let filename = URL(fileURLWithPath: imagePath).lastPathComponent
+        sessionData?.exportedImages.append(filename)
         // Auto-select new images for sending by default
-        sessionData?.selectedImagesForSending.insert(imagePath)
+        sessionData?.selectedImagesForSending.insert(filename)
     }
 
     func clearExportedImages() {
@@ -249,24 +256,44 @@ class RaceTimingModel: ObservableObject {
     }
 
     func toggleImageSelection(_ imagePath: String) {
-        if sessionData?.selectedImagesForSending.contains(imagePath) == true {
-            sessionData?.selectedImagesForSending.remove(imagePath)
+        let filename = URL(fileURLWithPath: imagePath).lastPathComponent
+        if sessionData?.selectedImagesForSending.contains(filename) == true {
+            sessionData?.selectedImagesForSending.remove(filename)
+            print("🔄 Deselected image: \(filename)")
         } else {
-            sessionData?.selectedImagesForSending.insert(imagePath)
+            sessionData?.selectedImagesForSending.insert(filename)
+            print("✅ Selected image: \(filename)")
         }
+        print("📋 Total selected images: \(sessionData?.selectedImagesForSending.count ?? 0)")
     }
 
     func isImageSelected(_ imagePath: String) -> Bool {
-        return sessionData?.selectedImagesForSending.contains(imagePath) ?? false
+        let filename = URL(fileURLWithPath: imagePath).lastPathComponent
+        return sessionData?.selectedImagesForSending.contains(filename) ?? false
     }
 
     func getSelectedImages() -> [String] {
-        return Array(sessionData?.selectedImagesForSending ?? Set<String>())
+        let selectedFilenames = Array(sessionData?.selectedImagesForSending ?? Set<String>())
+        // Convert filenames back to full paths (in the output directory)
+        let outputDir = outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        return selectedFilenames.map { filename in
+            outputDir.appendingPathComponent(filename).path
+        }
     }
 
     func saveSession(to url: URL) {
         sessionData?.finishEvents = finishEvents
         sessionData?.recordingStartupDelay = recordingStartupDelay
+
+        // Debug: Print what's being saved
+        print("💾 Saving session with:")
+        print("  - Exported images: \(sessionData?.exportedImages.count ?? 0)")
+        if let images = sessionData?.exportedImages {
+            for (i, imagePath) in images.enumerated() {
+                print("    [\(i+1)] \(imagePath)")
+            }
+        }
+        print("  - Selected images: \(sessionData?.selectedImagesForSending.count ?? 0)")
 
         let encoder = JSONEncoder()
         encoder.outputFormatting = .prettyPrinted
@@ -275,6 +302,9 @@ class RaceTimingModel: ObservableObject {
         if let session = sessionData,
            let data = try? encoder.encode(session) {
             try? data.write(to: url)
+            print("💾 Session saved successfully to: \(url.path)")
+        } else {
+            print("❌ Failed to encode/save session")
         }
     }
 

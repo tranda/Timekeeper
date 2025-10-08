@@ -498,14 +498,14 @@ class RacePlanService: ObservableObject {
             return
         }
 
-        guard let url = URL(string: "https://events.motion.rs/api/race-results/update-single-race") else {
+        guard let url = URL(string: "https://events.motion.rs/api/race-results/update-single") else {
             completion(.failure(NSError(domain: "RacePlanService", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid API endpoint URL"])))
             return
         }
 
         // Create multipart form data request
         var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
+        request.httpMethod = "POST"
         request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
 
         let boundary = "Boundary-\(UUID().uuidString)"
@@ -559,15 +559,22 @@ class RacePlanService: ObservableObject {
         }
 
         // Add image files
-        for imagePath in imagePaths {
+        print("📸 Processing \(imagePaths.count) image paths:")
+        for (index, imagePath) in imagePaths.enumerated() {
+            print("  [\(index + 1)] Path: \(imagePath)")
+
             let imageURL = URL(fileURLWithPath: imagePath)
+            print("  [\(index + 1)] File exists: \(FileManager.default.fileExists(atPath: imagePath))")
+
             guard let imageData = try? Data(contentsOf: imageURL) else {
-                print("Warning: Could not read image at path: \(imagePath)")
+                print("  ❌ [\(index + 1)] ERROR: Could not read image at path: \(imagePath)")
                 continue
             }
 
             let filename = imageURL.lastPathComponent
             let mimeType = getMimeType(for: imageURL.pathExtension)
+
+            print("  ✅ [\(index + 1)] Image loaded: \(filename), size: \(imageData.count) bytes, type: \(mimeType)")
 
             body.append("--\(boundary)\r\n".data(using: .utf8)!)
             body.append("Content-Disposition: form-data; name=\"images[]\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
@@ -586,6 +593,10 @@ class RacePlanService: ObservableObject {
         print("Images: \(imagePaths.count)")
         print("Lanes: \(sessionData.teamNames.filter { !$0.isEmpty }.count)")
         print("Endpoint: \(url.absoluteString)")
+        print("Request body size: \(body.count) bytes")
+        print("Content-Type: multipart/form-data; boundary=\(boundary)")
+        print("API Key: \(apiKey.prefix(10))...") // Show first 10 chars only for security
+        print("Headers: X-API-Key = \(apiKey.isEmpty ? "EMPTY" : "SET")")
         print("==========================================")
 
         URLSession.shared.dataTask(with: request) { data, response, error in
@@ -598,9 +609,10 @@ class RacePlanService: ObservableObject {
                 if let httpResponse = response as? HTTPURLResponse {
                     print("=== RACE RESULTS SUBMISSION RESPONSE ===")
                     print("Status Code: \(httpResponse.statusCode)")
+                    print("Headers: \(httpResponse.allHeaderFields)")
 
                     if let data = data, let responseString = String(data: data, encoding: .utf8) {
-                        print("Response: \(responseString)")
+                        print("Response Body: \(responseString)")
                     }
                     print("========================================")
 
