@@ -278,6 +278,10 @@ struct RaceTimingPanel: View {
                 }
                 .frame(maxWidth: .infinity)
 
+                // Center Hint Section
+                centeredActionHint
+                    .frame(maxWidth: .infinity)
+
                 // VIDEO RECORDING Section
                 VStack(spacing: 15) {
                     Button(action: handleRecordPress) {
@@ -611,6 +615,68 @@ struct RaceTimingPanel: View {
         } message: {
             Text("You have unsaved changes to the current race. What would you like to do?")
         }
+    }
+
+    // MARK: - Centered Action Hint
+
+    @ViewBuilder
+    private var centeredActionHint: some View {
+        let hintData = getCenteredHint()
+
+        VStack(spacing: 8) {
+            // Icon
+            Image(systemName: hintData.icon)
+                .font(.system(size: 32, weight: .semibold))
+                .foregroundColor(hintData.color)
+
+            // Message
+            VStack(spacing: 4) {
+                Text(hintData.primaryMessage)
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(hintData.color)
+                    .multilineTextAlignment(.center)
+
+                if let secondaryMessage = hintData.secondaryMessage {
+                    Text(secondaryMessage)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+            }
+        }
+        .frame(maxWidth: 140)
+        .padding(.vertical, 10)
+        .transition(.opacity.combined(with: .scale))
+        .animation(.easeInOut(duration: 0.3), value: hintData.primaryMessage)
+    }
+
+    private func getCenteredHint() -> (primaryMessage: String, secondaryMessage: String?, icon: String, color: Color) {
+        // Review mode
+        if isReviewMode {
+            return ("REVIEW MODE", "M to mark", "film.fill", Color.purple)
+        }
+
+        // Race completed (not active, has started)
+        if !timingModel.isRaceActive && timingModel.raceStartTime != nil {
+            return ("RACE COMPLETE", "Review mode", "checkmark.circle.fill", Color.green)
+        }
+
+        // Race active
+        if timingModel.isRaceActive {
+            if captureManager.isRecording {
+                return ("⎵ SPACE", "stop recording", "record.circle.fill", Color.red)
+            } else {
+                return ("⎵ SPACE", "record video", "video.badge.plus", Color.orange)
+            }
+        }
+
+        // Race initialized but not started
+        if timingModel.isRaceInitialized && timingModel.raceStartTime == nil {
+            return ("⏎ ENTER", "start race", "play.circle.fill", Color.blue)
+        }
+
+        // No race initialized
+        return ("Click NEW RACE", "to begin", "flag.checkered", Color.gray)
     }
 
     @ViewBuilder
@@ -1141,7 +1207,19 @@ struct RaceTimingPanel: View {
                     timingModel.sessionData?.videoFilePath = videoURL.path
                     // Session will be saved manually via Save button
                 }
+
+                // Auto-switch to Review mode after stopping race
+                DispatchQueue.main.async {
+                    print("🎬 Auto-switching to Review mode after race stop")
+                    self.isReviewMode = true
+                    self.loadVideoForReview()
+                }
             }
+        } else {
+            // No recording was active, still switch to review mode
+            print("🎬 Auto-switching to Review mode after race stop (no recording)")
+            isReviewMode = true
+            loadVideoForReview()
         }
     }
 

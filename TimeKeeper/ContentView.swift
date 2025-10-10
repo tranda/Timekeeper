@@ -615,9 +615,23 @@ struct ContentView: View {
         // Emergency stop - stop both race and recording immediately
         timingModel.stopRace()
         if captureManager.isRecording {
-            captureManager.stopRecording { _ in
+            captureManager.stopRecording { url in
                 print("Stopped race and recording via ESC key")
+                // Save video path if available
+                if let videoURL = url {
+                    timingModel.sessionData?.videoFilePath = videoURL.path
+                }
+
+                // Auto-switch to Review mode after stopping race
+                DispatchQueue.main.async {
+                    print("🎬 Auto-switching to Review mode after ESC stop")
+                    self.isReviewMode = true
+                }
             }
+        } else {
+            // No recording was active, still switch to review mode
+            print("🎬 Auto-switching to Review mode after ESC stop (no recording)")
+            isReviewMode = true
         }
     }
 
