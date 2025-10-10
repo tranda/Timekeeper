@@ -6,6 +6,8 @@ struct SettingsView: View {
     @State private var outputDirectory: URL?
     @State private var selectedDeviceID: String?
     @State private var availableDevices: [AVCaptureDevice] = []
+    @State private var selectedQuality: VideoQuality = VideoQuality.standardPresets[1] // Default to HD 1080p
+    @State private var availableQualities: [VideoQuality] = []
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -109,6 +111,47 @@ struct SettingsView: View {
 
                 Divider()
 
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Video Quality")
+                        .font(.headline)
+
+                    HStack {
+                        Text("Recording Quality:")
+
+                        Spacer()
+
+                        Picker("", selection: $selectedQuality) {
+                            ForEach(availableQualities, id: \.self) { quality in
+                                Text(quality.uniqueID).tag(quality)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 220)
+                        .onChange(of: selectedQuality) { newQuality in
+                            // Save selected quality to UserDefaults using unique identifier
+                            UserDefaults.standard.set(newQuality.uniqueID, forKey: "selectedVideoQuality")
+
+                            // Notify CaptureManager of quality change
+                            NotificationCenter.default.post(
+                                name: NSNotification.Name("VideoQualityChanged"),
+                                object: newQuality
+                            )
+                        }
+                    }
+
+                    if availableQualities.isEmpty {
+                        Text("No camera selected - quality options will appear after selecting a camera")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Available qualities depend on the selected camera device")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+
+                Divider()
+
                 Text("Note: Changing the number of lanes will take effect when you create a new race.")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -137,7 +180,7 @@ struct SettingsView: View {
             }
         }
         .padding()
-        .frame(width: 500, height: 500)
+        .frame(width: 500, height: 580)
         .onAppear {
             // Load output directory from UserDefaults (same key as CaptureManager)
             if let path = UserDefaults.standard.string(forKey: "outputDirectory") {
@@ -149,6 +192,27 @@ struct SettingsView: View {
 
             // Load selected camera device from UserDefaults
             selectedDeviceID = UserDefaults.standard.string(forKey: "selectedCameraDevice")
+
+            // Load saved video quality
+            if let savedQualityID = UserDefaults.standard.string(forKey: "selectedVideoQuality"),
+               let quality = VideoQuality.standardPresets.first(where: { $0.uniqueID == savedQualityID }) {
+                selectedQuality = quality
+            }
+
+            // Listen for quality updates from CaptureManager
+            NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("AvailableQualitiesUpdated"),
+                object: nil,
+                queue: .main
+            ) { notification in
+                if let qualities = notification.object as? [VideoQuality] {
+                    availableQualities = qualities
+                    // Update selected quality if it's not available
+                    if !qualities.contains(selectedQuality), let firstQuality = qualities.first {
+                        selectedQuality = firstQuality
+                    }
+                }
+            }
         }
     }
 

@@ -1,9 +1,87 @@
 import AVFoundation
 import AppKit
 
+struct VideoQuality: Equatable, Hashable {
+    let preset: AVCaptureSession.Preset?
+    let format: AVCaptureDevice.Format?
+    let displayName: String
+    let dimensions: String
+    let frameRate: String
+
+    // Unique identifier combining display name and frame rate
+    var uniqueID: String {
+        return "\(displayName) @ \(frameRate)"
+    }
+
+    // Standard presets
+    static let standardPresets: [VideoQuality] = [
+        VideoQuality(preset: .hd4K3840x2160, format: nil, displayName: "4K UHD", dimensions: "3840×2160", frameRate: "30fps"),
+        VideoQuality(preset: .hd1920x1080, format: nil, displayName: "HD 1080p", dimensions: "1920×1080", frameRate: "30fps"),
+        VideoQuality(preset: .hd1280x720, format: nil, displayName: "HD 720p", dimensions: "1280×720", frameRate: "30fps"),
+        VideoQuality(preset: .high, format: nil, displayName: "High", dimensions: "Device dependent", frameRate: "30fps"),
+        VideoQuality(preset: .medium, format: nil, displayName: "Medium", dimensions: "Device dependent", frameRate: "30fps"),
+        VideoQuality(preset: .low, format: nil, displayName: "Low", dimensions: "Device dependent", frameRate: "30fps")
+    ]
+
+    // Create from device format
+    static func fromFormat(_ format: AVCaptureDevice.Format, preferredFrameRate: Double = 30.0) -> VideoQuality {
+        let description = format.formatDescription
+        let dimensions = CMVideoFormatDescriptionGetDimensions(description)
+        let width = Int(dimensions.width)
+        let height = Int(dimensions.height)
+
+        // Use the exact preferred frame rate instead of finding the "best"
+        let actualFrameRate = preferredFrameRate
+        let frameRateString = "\(Int(actualFrameRate))fps"
+
+        let displayName: String
+        switch (width, height) {
+        case (3840, 2160):
+            displayName = "4K UHD"
+        case (1920, 1080):
+            displayName = "HD 1080p"
+        case (1920, 1440):
+            displayName = "HD 1080p+"  // iPhone specific format
+        case (1280, 720):
+            displayName = "HD 720p"
+        case (640, 480):
+            displayName = "SD 480p"
+        default:
+            displayName = "Custom"
+        }
+
+        return VideoQuality(
+            preset: nil,
+            format: format,
+            displayName: displayName,
+            dimensions: "\(width)×\(height)",
+            frameRate: frameRateString
+        )
+    }
+
+    static func == (lhs: VideoQuality, rhs: VideoQuality) -> Bool {
+        if let lhsPreset = lhs.preset, let rhsPreset = rhs.preset {
+            return lhsPreset.rawValue == rhsPreset.rawValue && lhs.frameRate == rhs.frameRate
+        }
+        return lhs.displayName == rhs.displayName && lhs.dimensions == rhs.dimensions && lhs.frameRate == rhs.frameRate
+    }
+
+    func hash(into hasher: inout Hasher) {
+        if let preset = preset {
+            hasher.combine(preset.rawValue)
+        } else {
+            hasher.combine(displayName)
+            hasher.combine(dimensions)
+        }
+        hasher.combine(frameRate)
+    }
+}
+
 class CaptureManager: NSObject, ObservableObject {
     @Published var availableDevices: [AVCaptureDevice] = []
     @Published var selectedDevice: AVCaptureDevice?
+    @Published var availableQualities: [VideoQuality] = []
+    @Published var selectedQuality: VideoQuality = VideoQuality.standardPresets[1] // Default to HD 1080p
     @Published var isRecording = false
     @Published var outputDirectory: URL? {
         didSet {
@@ -54,12 +132,21 @@ class CaptureManager: NSObject, ObservableObject {
         // Don't refresh devices here - let ContentView do it after setup
         // But we can load the saved camera device ID for later use
         loadSavedCameraDevice()
+        // Video quality will be loaded when device formats are detected
 
         // Listen for camera switch notifications from Settings
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleCameraSwitchRequest(_:)),
             name: NSNotification.Name("CameraSwitchRequested"),
+            object: nil
+        )
+
+        // Listen for video quality change notifications from Settings
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleVideoQualityChange(_:)),
+            name: NSNotification.Name("VideoQualityChanged"),
             object: nil
         )
     }
@@ -69,6 +156,163 @@ class CaptureManager: NSObject, ObservableObject {
         if let savedDeviceID = UserDefaults.standard.string(forKey: "selectedCameraDevice") {
             print("📹 Saved camera device ID: \(savedDeviceID)")
             // Will be applied when refreshDevices() is called
+        }
+    }
+
+
+    func saveVideoQuality(_ quality: VideoQuality) {
+        selectedQuality = quality
+        UserDefaults.standard.set(quality.uniqueID, forKey: "selectedVideoQuality")
+        print("💾 Saved video quality: \(quality.uniqueID)")
+    }
+
+    func detectAvailableQualities(for device: AVCaptureDevice) {
+        print("=== DEVICE FORMAT ANALYSIS ===")
+        print("Device: \(device.localizedName)")
+        print("Device type: \(device.deviceType.rawValue)")
+        print("Available formats: \(device.formats.count)")
+
+        // Log all available formats to understand device capabilities
+        for (index, format) in device.formats.enumerated() {
+            let description = format.formatDescription
+            let dimensions = CMVideoFormatDescriptionGetDimensions(description)
+            let mediaSubType = CMFormatDescriptionGetMediaSubType(description)
+
+            let codecString = String(format: "%c%c%c%c",
+                (mediaSubType >> 24) & 0xff,
+                (mediaSubType >> 16) & 0xff,
+                (mediaSubType >> 8) & 0xff,
+                mediaSubType & 0xff)
+
+            print("Format \(index): \(dimensions.width)x\(dimensions.height) (\(codecString))")
+
+            // Check supported frame rates for this format
+            let frameRateRanges = format.videoSupportedFrameRateRanges
+            for range in frameRateRanges {
+                print("  Frame rates: \(range.minFrameRate)-\(range.maxFrameRate) fps")
+            }
+        }
+        print("===============================")
+
+        var qualities: [VideoQuality] = []
+
+        // Group formats by resolution and frame rate combinations
+        var formatsByResolutionAndFrameRate: [String: AVCaptureDevice.Format] = [:]
+
+        for format in device.formats {
+            let description = format.formatDescription
+            let dimensions = CMVideoFormatDescriptionGetDimensions(description)
+
+            // Get all common frame rates supported by this format
+            let frameRateRanges = format.videoSupportedFrameRateRanges
+            let commonFrameRates: [Double] = [30.0, 60.0] // Common frame rates we want to support
+
+            for targetFrameRate in commonFrameRates {
+                // Check if this format supports the target frame rate
+                if let range = frameRateRanges.first(where: { range in
+                    targetFrameRate >= range.minFrameRate && targetFrameRate <= range.maxFrameRate
+                }) {
+                    let key = "\(dimensions.width)x\(dimensions.height)@\(Int(targetFrameRate))"
+
+                    // Only store this format if we don't have one yet, OR if this one is better
+                    // Better = maxFrameRate is closer to our target (prefer 60fps format for 60fps target)
+                    if let existingFormat = formatsByResolutionAndFrameRate[key],
+                       let existingRange = existingFormat.videoSupportedFrameRateRanges.first {
+                        // Prefer format whose max frame rate matches our target
+                        if abs(range.maxFrameRate - targetFrameRate) < abs(existingRange.maxFrameRate - targetFrameRate) {
+                            formatsByResolutionAndFrameRate[key] = format
+                        }
+                    } else {
+                        formatsByResolutionAndFrameRate[key] = format
+                    }
+                }
+            }
+        }
+
+        // Create VideoQuality objects from each resolution/frame rate combination
+        let sortedKeys = formatsByResolutionAndFrameRate.keys.sorted { key1, key2 in
+            // Extract resolution for sorting
+            let components1 = key1.split(separator: "@")
+            let components2 = key2.split(separator: "@")
+
+            if let res1 = components1.first, let res2 = components2.first {
+                let dim1 = res1.split(separator: "x")
+                let dim2 = res2.split(separator: "x")
+
+                if dim1.count == 2, dim2.count == 2,
+                   let w1 = Int(dim1[0]), let h1 = Int(dim1[1]),
+                   let w2 = Int(dim2[0]), let h2 = Int(dim2[1]) {
+                    let area1 = w1 * h1
+                    let area2 = w2 * h2
+
+                    // Sort by area first, then by frame rate
+                    if area1 != area2 {
+                        return area1 > area2
+                    } else {
+                        // Same resolution, sort by frame rate (higher first)
+                        if let fps1 = Int(components1.last ?? "0"),
+                           let fps2 = Int(components2.last ?? "0") {
+                            return fps1 > fps2
+                        }
+                    }
+                }
+            }
+            return false
+        }
+
+        for key in sortedKeys {
+            if let format = formatsByResolutionAndFrameRate[key] {
+                let components = key.split(separator: "@")
+                if let frameRateStr = components.last, let frameRate = Double(frameRateStr) {
+                    let quality = VideoQuality.fromFormat(format, preferredFrameRate: frameRate)
+                    qualities.append(quality)
+                    print("✅ Available quality: \(quality.displayName) (\(quality.dimensions)) @ \(quality.frameRate)")
+                }
+            }
+        }
+
+        DispatchQueue.main.async {
+            self.availableQualities = qualities
+
+            // Try to match saved quality preference first
+            let savedQualityID = UserDefaults.standard.string(forKey: "selectedVideoQuality")
+            var qualityChanged = false
+
+            if let savedID = savedQualityID,
+               let matchingQuality = qualities.first(where: { $0.uniqueID == savedID }) {
+                self.selectedQuality = matchingQuality
+                qualityChanged = true
+                print("🔄 Restored saved quality preference: \(matchingQuality.uniqueID)")
+            } else if let currentQualityID = self.selectedQuality.uniqueID as String?,
+                      let matchingQuality = qualities.first(where: { $0.uniqueID == currentQualityID }) {
+                self.selectedQuality = matchingQuality
+                qualityChanged = true
+                print("🔄 Updated to device-specific format for: \(matchingQuality.uniqueID)")
+            } else if let bestQuality = qualities.first {
+                self.selectedQuality = bestQuality
+                qualityChanged = true
+                print("🔄 Switched to best available quality: \(bestQuality.uniqueID)")
+            }
+
+            // Reconfigure session with the new format-based quality
+            if qualityChanged, let device = self.selectedDevice {
+                self.sessionQueue.async { [weak self] in
+                    self?.configureSession(device: device) { success in
+                        if success {
+                            print("✅ Reconfigured session with format-based quality")
+                            self?.startSessionIfNeeded()
+                        } else {
+                            print("❌ Failed to reconfigure session with format-based quality")
+                        }
+                    }
+                }
+            }
+
+            // Notify SettingsView about available qualities
+            NotificationCenter.default.post(
+                name: NSNotification.Name("AvailableQualitiesUpdated"),
+                object: qualities
+            )
         }
     }
 
@@ -163,6 +407,8 @@ class CaptureManager: NSObject, ObservableObject {
             self?.configureSession(device: device) { success in
                 if success {
                     print("Successfully configured session for: \(device.localizedName)")
+                    // Detect available qualities for this device
+                    self?.detectAvailableQualities(for: device)
                     self?.startSessionIfNeeded()
                 } else {
                     print("Failed to configure session for: \(device.localizedName)")
@@ -219,17 +465,64 @@ class CaptureManager: NSObject, ObservableObject {
             movieFileOutput = nil
         }
 
-        // Since iPhone cameras don't provide portrait formats, use HD landscape and rotate
-        // Use 1080p if available for best quality
-        if session.canSetSessionPreset(.hd1920x1080) {
-            session.sessionPreset = .hd1920x1080
-            print("Using HD 1920x1080 preset - will rotate to portrait")
-        } else if session.canSetSessionPreset(.hd1280x720) {
-            session.sessionPreset = .hd1280x720
-            print("Using HD 1280x720 preset - will rotate to portrait")
+        // Configure video quality - use format if available, otherwise preset
+        // NOTE: Continuity Camera devices don't support setting activeFormat directly
+        // Check if this is a Continuity Camera device (external type)
+        let isContinuityCameraDevice = device.deviceType == .externalUnknown
+
+        if let format = selectedQuality.format, !isContinuityCameraDevice {
+            // Use direct format selection for best quality control (only for non-Continuity Camera devices)
+            // Set both format AND frame rate together before adding to session
+            do {
+                try device.lockForConfiguration()
+
+                // Set the format first
+                device.activeFormat = format
+
+                // Set frame rate immediately after format, while device is still locked
+                if let frameRate = Double(selectedQuality.frameRate.replacingOccurrences(of: "fps", with: "")) {
+                    let frameDuration = CMTimeMake(value: 1, timescale: Int32(frameRate))
+                    device.activeVideoMinFrameDuration = frameDuration
+                    device.activeVideoMaxFrameDuration = frameDuration
+                }
+
+                device.unlockForConfiguration()
+                print("✅ Set device format: \(selectedQuality.displayName) (\(selectedQuality.dimensions)) @ \(selectedQuality.frameRate)")
+            } catch {
+                print("❌ Failed to set format and frame rate: \(error)")
+                // Fallback to preset mode
+                session.sessionPreset = .high
+                print("Fallback to high preset")
+            }
         } else {
-            session.sessionPreset = .high
-            print("Using high preset - will rotate to portrait")
+            // For Continuity Camera or preset-based quality, use session presets
+            // Continuity Camera doesn't support activeFormat, so we must use presets
+            if isContinuityCameraDevice {
+                print("⚠️ Continuity Camera detected - using preset mode (activeFormat not supported)")
+            }
+
+            if let preset = selectedQuality.preset {
+                // Use preset-based configuration
+                if session.canSetSessionPreset(preset) {
+                    session.sessionPreset = preset
+                    print("✅ Using preset: \(selectedQuality.displayName) (\(selectedQuality.dimensions))")
+                } else {
+                    // Fallback to the best available preset
+                    var fallbackPreset: AVCaptureSession.Preset = .high
+                    for quality in VideoQuality.standardPresets {
+                        if let qualityPreset = quality.preset, session.canSetSessionPreset(qualityPreset) {
+                            fallbackPreset = qualityPreset
+                            break
+                        }
+                    }
+                    session.sessionPreset = fallbackPreset
+                    print("❌ Selected preset not available, using fallback: \(fallbackPreset.rawValue)")
+                }
+            } else {
+                // No preset available, use high quality preset as fallback
+                session.sessionPreset = .high
+                print("⚠️ Using .high preset as fallback for Continuity Camera")
+            }
         }
 
         do {
@@ -429,6 +722,29 @@ class CaptureManager: NSObject, ObservableObject {
 
         print("🔄 Settings requested camera switch to: \(device.localizedName)")
         selectDevice(device)
+    }
+
+    @objc private func handleVideoQualityChange(_ notification: Notification) {
+        guard let quality = notification.object as? VideoQuality else {
+            print("⚠️ Invalid video quality change notification - no quality provided")
+            return
+        }
+
+        print("🔄 Settings requested quality change to: \(quality.displayName)")
+        saveVideoQuality(quality)
+
+        // Reconfigure the session with the new quality if we have an active device
+        if let device = selectedDevice {
+            sessionQueue.async { [weak self] in
+                self?.configureSession(device: device) { success in
+                    if success {
+                        print("Successfully reconfigured session with new quality: \(quality.displayName)")
+                    } else {
+                        print("Failed to reconfigure session with new quality: \(quality.displayName)")
+                    }
+                }
+            }
+        }
     }
 
     deinit {
