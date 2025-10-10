@@ -53,6 +53,10 @@ struct RaceTimingPanel: View {
                 let dateFormatter = DateFormatter()
                 dateFormatter.dateFormat = "MMM d HH-mm"
                 newRaceName = "Race \(dateFormatter.string(from: Date()))"
+
+                // Update newTeamNames array to match current maxLanes setting
+                newTeamNames = (1...AppConfig.shared.maxLanes).map { "Lane \($0)" }
+
                 showNewRaceSheet = true
             }) {
                 ZStack {
@@ -561,7 +565,7 @@ struct RaceTimingPanel: View {
                         .font(.headline)
 
                     VStack(spacing: 8) {
-                        ForEach(0..<AppConfig.shared.maxLanes, id: \.self) { index in
+                        ForEach(0..<min(AppConfig.shared.maxLanes, newTeamNames.count), id: \.self) { index in
                             HStack {
                                 Text("Lane \(index + 1):")
                                     .frame(width: 60, alignment: .trailing)
