@@ -354,6 +354,10 @@ struct RaceTimelineView: View {
                                 selectedLane = String(item.index + 1)
                             }) {
                                 HStack {
+                                    Text("Lane \(item.index + 1):")
+                                        .font(.system(size: 14, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 60, alignment: .leading)
                                     Text(item.name)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                     if selectedLane == String(item.index + 1) {
