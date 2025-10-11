@@ -46,6 +46,7 @@ struct RaceTimingPanel: View {
     @State private var pendingRaceChange: String? = nil
     @State private var hasUnsavedChanges = false
     @State private var pendingNewRace = false
+    @State private var pendingEventId: Int? = nil
 
     var body: some View {
         VStack(spacing: 12) {
@@ -89,11 +90,19 @@ struct RaceTimingPanel: View {
                         Picker("", selection: Binding(
                             get: { racePlanService.selectedEvent?.id ?? 0 },
                             set: { eventId in
-                                if let event = racePlanService.availableEvents.first(where: { $0.id == eventId }) {
-                                    racePlanService.selectEvent(event)
-                                    // Auto-load race plans for the new event
-                                    if racePlanService.hasAPIKey() {
-                                        racePlanService.fetchRacePlans()
+                                // Check for unsaved changes before switching events
+                                if hasUnsavedChanges {
+                                    // Show confirmation dialog and store pending event ID
+                                    pendingEventId = eventId
+                                    showSaveConfirmation = true
+                                } else {
+                                    // No unsaved changes, switch event directly
+                                    if let event = racePlanService.availableEvents.first(where: { $0.id == eventId }) {
+                                        racePlanService.selectEvent(event)
+                                        // Auto-load race plans for the new event
+                                        if racePlanService.hasAPIKey() {
+                                            racePlanService.fetchRacePlans()
+                                        }
                                     }
                                 }
                             }
@@ -624,6 +633,7 @@ struct RaceTimingPanel: View {
             Button("Cancel") {
                 pendingRaceChange = nil
                 pendingNewRace = false
+                pendingEventId = nil
             }
         } message: {
             Text("You have unsaved changes to the current race. What would you like to do?")
@@ -1641,11 +1651,22 @@ struct RaceTimingPanel: View {
     }
 
     private func confirmRaceChange() {
-        // Check if this is a new race or a race change
+        // Check if this is a new race, event change, or race change
         if pendingNewRace {
             print("🆕 Confirming new race creation")
             openNewRaceSheet()
             pendingNewRace = false
+        } else if let eventId = pendingEventId {
+            print("🔄 Confirming event change to ID: \(eventId)")
+            // Perform the actual event change
+            if let event = racePlanService.availableEvents.first(where: { $0.id == eventId }) {
+                racePlanService.selectEvent(event)
+                // Auto-load race plans for the new event
+                if racePlanService.hasAPIKey() {
+                    racePlanService.fetchRacePlans()
+                }
+            }
+            pendingEventId = nil
         } else if let newRaceName = pendingRaceChange {
             print("🔄 Confirming race change to: \(newRaceName)")
             // Perform the actual race change
