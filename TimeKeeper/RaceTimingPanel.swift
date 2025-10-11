@@ -466,6 +466,10 @@ struct RaceTimingPanel: View {
                             selectedLane = String(index + 1)
                         }) {
                             HStack {
+                                Text("Lane \(index + 1):")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 60, alignment: .leading)
                                 Text(name)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                 if selectedLane == String(index + 1) {
