@@ -38,4 +38,23 @@ Examples:
 - "increase major version": 0.9.3 → 1.0.0
 - Beyond 9: 0.5.9 → 0.5.10 → 0.5.11...
 
-Current version: 0.7.2
+Current version: 0.7.4
+
+## Deployment Instructions
+
+**IMPORTANT**: When user says **"deploy"**, perform these steps:
+
+1. **Build Release version**:
+   ```bash
+   xcodebuild -project TimeKeeper.xcodeproj -scheme TimeKeeper -configuration Release clean build
+   ```
+
+2. **Deploy to Desktop** (replace old version if exists):
+   ```bash
+   rm -rf ~/Desktop/TimeKeeper.app
+   cp -R /Users/zorantrandafilovic/Library/Developer/Xcode/DerivedData/TimeKeeper-dggblasvfdpwjuazmiprpyuzepwz/Build/Products/Release/TimeKeeper.app ~/Desktop/TimeKeeper.app
+   ```
+
+3. **Confirm deployment**: Inform user that TimeKeeper.app has been deployed to Desktop
+
+**Note**: "deploy" means build Release configuration and place on Desktop, replacing any existing version
