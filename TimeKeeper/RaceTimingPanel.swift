@@ -50,7 +50,7 @@ struct RaceTimingPanel: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // New Race button at the top (visible but disabled during race)
+            // New Race button at the top (visible but disabled during race or when event has race plan)
             Button(action: {
                 print("🔵 NEW RACE clicked - hasUnsavedChanges = \(hasUnsavedChanges)")
                 // Check for unsaved changes before starting new race
@@ -66,7 +66,7 @@ struct RaceTimingPanel: View {
             }) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(timingModel.isRaceActive ? Color.blue.opacity(0.5) : Color.blue)
+                        .fill((timingModel.isRaceActive || hasLoadedEventWithRacePlan) ? Color.blue.opacity(0.5) : Color.blue)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
                     Text("NEW RACE")
@@ -75,7 +75,7 @@ struct RaceTimingPanel: View {
                 }
             }
             .buttonStyle(.plain)
-            .disabled(timingModel.isRaceActive)
+            .disabled(timingModel.isRaceActive || hasLoadedEventWithRacePlan)
             .padding(.horizontal)
 
             // Event Selection Section
@@ -646,6 +646,15 @@ struct RaceTimingPanel: View {
             // Set up the callback for timeline data changes
             onTimelineDataChanged = markAsUnsaved
         }
+    }
+
+    // MARK: - Computed Properties
+
+    // Check if we have a loaded event with race plan (races are predefined)
+    private var hasLoadedEventWithRacePlan: Bool {
+        return racePlanService.selectedEvent != nil &&
+               racePlanService.availableRacePlan != nil &&
+               !(racePlanService.availableRacePlan?.races.isEmpty ?? true)
     }
 
     // MARK: - Centered Action Hint

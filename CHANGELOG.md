@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.2] - 2025-01-11
+
+### Improved
+- **UX Enhancement**: NEW RACE button now properly disabled when event with race plan is loaded
+  - Prevents accidental creation of manual races when races are predefined in race plan
+  - Button appears dimmed (50% opacity) when disabled to provide clear visual feedback
+  - Races from loaded events must be selected from the Race dropdown, not created manually
+
 ## [0.7.1] - 2025-01-11
 
 ### Improved
