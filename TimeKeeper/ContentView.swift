@@ -41,12 +41,13 @@ struct ContentView: View {
     @State private var keyMonitor: Any? = nil
     @State private var triggerLaneSelection = false
     @State private var isReviewMode = false
+    @State private var markTimelineDataAsUnsaved: () -> Void = {}
 
     var body: some View {
         HStack(spacing: 0) {
             // Left side - Controls
             VStack(alignment: .leading, spacing: 0) {
-                RaceTimingPanel(timingModel: timingModel, captureManager: captureManager, playerViewModel: playerViewModel, isReviewMode: $isReviewMode)
+                RaceTimingPanel(timingModel: timingModel, captureManager: captureManager, playerViewModel: playerViewModel, isReviewMode: $isReviewMode, onTimelineDataChanged: $markTimelineDataAsUnsaved)
             }
             .frame(minWidth: 600, idealWidth: 700, maxWidth: 800)
             .padding(.horizontal)
@@ -368,7 +369,8 @@ struct ContentView: View {
                         timingModel: timingModel,
                         captureManager: captureManager,
                         playerViewModel: playerViewModel,
-                        triggerLaneSelection: $triggerLaneSelection
+                        triggerLaneSelection: $triggerLaneSelection,
+                        onDataChanged: markTimelineDataAsUnsaved
                     )
                     .frame(height: 300)
                     .padding(.horizontal)
@@ -584,11 +586,15 @@ struct ContentView: View {
             if captureManager.isRecording {
                 captureManager.stopRecording { _ in
                     print("Stopped video recording via shortcut")
+                    // Mark as unsaved when recording stops
+                    self.markTimelineDataAsUnsaved()
                 }
             } else {
                 captureManager.startRecording(to: captureManager.outputDirectory) { success in
                     if success {
                         print("Started video recording via shortcut")
+                        // Mark as unsaved when recording starts
+                        self.markTimelineDataAsUnsaved()
                     }
                 }
             }
@@ -620,6 +626,8 @@ struct ContentView: View {
                 // Save video path if available
                 if let videoURL = url {
                     timingModel.sessionData?.videoFilePath = videoURL.path
+                    // Mark as unsaved when video is saved
+                    self.markTimelineDataAsUnsaved()
                 }
 
                 // Auto-switch to Review mode after stopping race

@@ -6,6 +6,7 @@ struct RaceTimelineView: View {
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var playerViewModel: PlayerViewModel
     @Binding var triggerLaneSelection: Bool
+    var onDataChanged: () -> Void = {}
 
     @State private var currentRaceTime: Double = 0
     @State private var isDragging = false
@@ -392,6 +393,7 @@ struct RaceTimelineView: View {
                             }
                         } else {
                             timingModel.recordFinishAtTime(currentRaceTime, lane: laneName, videoTime: videoTime)
+                            onDataChanged()  // Notify parent of changes
                             showLaneInput = false
                         }
                     }
@@ -414,6 +416,7 @@ struct RaceTimelineView: View {
                     let videoTime = isVideoAvailable ? (currentRaceTime - videoStartInRace) : nil
                     // Add the new finish time
                     timingModel.recordFinishAtTime(currentRaceTime, lane: lane, videoTime: videoTime)
+                    onDataChanged()  // Notify parent of changes
                     showLaneInput = false
                     laneToOverwrite = nil
                 }

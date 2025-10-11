@@ -22,6 +22,7 @@ struct RaceTimingPanel: View {
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var playerViewModel: PlayerViewModel
     @Binding var isReviewMode: Bool
+    @Binding var onTimelineDataChanged: () -> Void
     @StateObject private var racePlanService = RacePlanService.shared
     @State private var showLaneInput = false
     @State private var selectedLane = "1"
@@ -44,20 +45,23 @@ struct RaceTimingPanel: View {
     @State private var showSaveConfirmation = false
     @State private var pendingRaceChange: String? = nil
     @State private var hasUnsavedChanges = false
+    @State private var pendingNewRace = false
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 12) {
             // New Race button at the top (visible but disabled during race)
             Button(action: {
-                // Set default race name with current date/time
-                let dateFormatter = DateFormatter()
-                dateFormatter.dateFormat = "MMM d HH-mm"
-                newRaceName = "Race \(dateFormatter.string(from: Date()))"
-
-                // Update newTeamNames array to match current maxLanes setting
-                newTeamNames = (1...AppConfig.shared.maxLanes).map { "Lane \($0)" }
-
-                showNewRaceSheet = true
+                print("🔵 NEW RACE clicked - hasUnsavedChanges = \(hasUnsavedChanges)")
+                // Check for unsaved changes before starting new race
+                if hasUnsavedChanges {
+                    print("🔵 Showing confirmation dialog")
+                    pendingNewRace = true
+                    showSaveConfirmation = true
+                } else {
+                    print("🔵 No unsaved changes, opening new race sheet")
+                    // No unsaved changes, proceed directly
+                    openNewRaceSheet()
+                }
             }) {
                 ZStack {
                     RoundedRectangle(cornerRadius: 10)
@@ -75,7 +79,7 @@ struct RaceTimingPanel: View {
 
             // Event Selection Section
             if !racePlanService.availableEvents.isEmpty {
-                VStack(spacing: 8) {
+                VStack(spacing: 4) {
                     HStack {
                         Text("Event:")
                             .font(.system(size: 18, weight: .bold))
@@ -107,7 +111,7 @@ struct RaceTimingPanel: View {
                     }
                 }
                 .padding(.horizontal)
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(8)
                 .padding(.horizontal)
@@ -115,7 +119,7 @@ struct RaceTimingPanel: View {
 
             // Race Plan Selection Section (only show if race plan is available)
             if let racePlan = racePlanService.availableRacePlan, !racePlan.races.isEmpty {
-                VStack(spacing: 8) {
+                VStack(spacing: 4) {
                     // Race Selection
                     HStack {
                         Text("Race:")
@@ -189,7 +193,7 @@ struct RaceTimingPanel: View {
                     }
                 }
                 .padding(.horizontal)
-                .padding(.vertical, 8)
+                .padding(.vertical, 4)
                 .background(Color.gray.opacity(0.05))
                 .cornerRadius(8)
                 .padding(.horizontal)
@@ -219,7 +223,7 @@ struct RaceTimingPanel: View {
                 .scaleEffect(hasUnsavedChanges ? 1.05 : 1.0)
                 .animation(.easeInOut(duration: 0.2), value: hasUnsavedChanges)
                 .padding(.horizontal)
-                .padding(.vertical, 12)
+                .padding(.vertical, 6)
 
                 if let errorMessage = racePlanService.errorMessage {
                     Text(errorMessage)
@@ -230,9 +234,9 @@ struct RaceTimingPanel: View {
             }
 
             // Main controls in horizontal layout
-            HStack(alignment: .top, spacing: 30) {
+            HStack(alignment: .top, spacing: 20) {
                 // START/STOP Section
-                VStack(spacing: 15) {
+                VStack(spacing: 8) {
                     if !timingModel.isRaceActive {
                         Button(action: handleStartPress) {
                             ZStack {
@@ -287,7 +291,7 @@ struct RaceTimingPanel: View {
                     .frame(maxWidth: .infinity)
 
                 // VIDEO RECORDING Section
-                VStack(spacing: 15) {
+                VStack(spacing: 8) {
                     Button(action: handleRecordPress) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 15)
@@ -343,7 +347,7 @@ struct RaceTimingPanel: View {
 
 
             // Race Results Table
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("Race Results")
                         .font(.headline)
@@ -393,13 +397,13 @@ struct RaceTimingPanel: View {
                     .background(Color.gray.opacity(0.1))
 
                     ScrollView {
-                        LazyVStack(spacing: 2) {
+                        LazyVStack(spacing: 1) {
                             ForEach(Array(timingModel.sessionData?.teamNames.enumerated() ?? [].enumerated()), id: \.offset) { index, teamName in
                                 raceResultRow(index: index, teamName: teamName)
                             }
                         }
                     }
-                    .frame(maxHeight: 150)
+                    .frame(maxHeight: 200)
                     .background(Color.gray.opacity(0.02))
                     .cornerRadius(5)
                 } else {
@@ -412,7 +416,7 @@ struct RaceTimingPanel: View {
             .frame(maxWidth: .infinity)
 
             // Bottom section with images and send button - scrollable if needed
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
                 // Exported Images Selection
                 if timingModel.isRaceInitialized && !(timingModel.sessionData?.exportedImages.isEmpty ?? true) {
                     exportedImagesSection
@@ -438,7 +442,7 @@ struct RaceTimingPanel: View {
 
             Spacer()
         }
-        .padding(20)
+        .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.controlBackgroundColor))
         .cornerRadius(10)
@@ -584,6 +588,9 @@ struct RaceTimingPanel: View {
                     .keyboardShortcut(.escape)
 
                     Button("Start New Race") {
+                        // Exit review mode when starting a new race
+                        isReviewMode = false
+
                         timingModel.initializeNewRace(name: newRaceName, teamNames: newTeamNames, eventId: racePlanService.selectedEvent?.id)
                         // Clear the recorded video and reset capture manager state
                         captureManager.lastRecordedURL = nil
@@ -592,6 +599,7 @@ struct RaceTimingPanel: View {
                         playerViewModel.player.replaceCurrentItem(with: nil)
                         playerViewModel.isSeekingOutsideVideo = false
                         showNewRaceSheet = false
+                        print("🟢 Resetting hasUnsavedChanges to false after starting new race")
                         hasUnsavedChanges = false  // Reset unsaved changes after new race
                     }
                     .keyboardShortcut(.return)
@@ -615,9 +623,14 @@ struct RaceTimingPanel: View {
 
             Button("Cancel") {
                 pendingRaceChange = nil
+                pendingNewRace = false
             }
         } message: {
             Text("You have unsaved changes to the current race. What would you like to do?")
+        }
+        .onAppear {
+            // Set up the callback for timeline data changes
+            onTimelineDataChanged = markAsUnsaved
         }
     }
 
@@ -734,7 +747,7 @@ struct RaceTimingPanel: View {
             Spacer()
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
         .background(index % 2 == 0 ? Color.clear : Color.gray.opacity(0.05))
     }
 
@@ -743,6 +756,7 @@ struct RaceTimingPanel: View {
         Menu {
             Button("Registered") {
                 timingModel.recordLaneStatus(teamName, status: .registered)
+                markAsUnsaved()
             }
 
             Button("Finished") {
@@ -754,14 +768,17 @@ struct RaceTimingPanel: View {
 
             Button("DNS - Did Not Start") {
                 timingModel.recordLaneStatus(teamName, status: .dns)
+                markAsUnsaved()
             }
 
             Button("DNF - Did Not Finish") {
                 timingModel.recordLaneStatus(teamName, status: .dnf)
+                markAsUnsaved()
             }
 
             Button("DSQ - Disqualified") {
                 timingModel.recordLaneStatus(teamName, status: .dsq)
+                markAsUnsaved()
             }
 
             Divider()
@@ -769,7 +786,7 @@ struct RaceTimingPanel: View {
             Button("Clear") {
                 timingModel.finishEvents.removeAll { $0.label == teamName }
                 timingModel.sessionData?.finishEvents.removeAll { $0.label == teamName }
-                // Session will be saved manually via Save button
+                markAsUnsaved()
             }
         } label: {
             HStack(spacing: 4) {
@@ -832,7 +849,8 @@ struct RaceTimingPanel: View {
                 print("   \(i+1). \(finishEvent.label): \(finishEvent.tRace) (rounded: \(rounded)) - \(finishEvent.status.rawValue)")
             }
 
-            // Session will be saved manually via Save button
+            // Mark as unsaved
+            markAsUnsaved()
         } else {
             print("⚠️ Could not find finish event with ID \(event.id) to update")
         }
@@ -853,6 +871,9 @@ struct RaceTimingPanel: View {
             let rounded = round(finishEvent.tRace * 1000) / 1000
             print("   \(i+1). \(finishEvent.label): \(finishEvent.tRace) (rounded: \(rounded)) - \(finishEvent.status.rawValue)")
         }
+
+        // Mark as unsaved
+        markAsUnsaved()
     }
 
     private func loadVideoForReview() {
@@ -1198,17 +1219,22 @@ struct RaceTimingPanel: View {
     }
 
     private func handleStopPress() {
+        print("🟠 handleStopPress() called")
         timingModel.stopRace()
 
         // Always stop video recording when stopping race
         if captureManager.isRecording {
+            print("🟠 Stopping recording...")
             captureManager.stopRecording { url in
-                print("Stopped video recording with race")
+                print("🟠 Recording stopped callback fired")
                 // Video URL will be available for review
                 if let videoURL = url {
-                    print("Video saved for review: \(videoURL.path)")
+                    print("🟠 Video saved for review: \(videoURL.path)")
                     // Save video path to session data for review mode
                     timingModel.sessionData?.videoFilePath = videoURL.path
+                    // Mark as unsaved when video is saved
+                    print("🟠 Calling markAsUnsaved() after video saved")
+                    self.markAsUnsaved()
                     // Session will be saved manually via Save button
                 }
 
@@ -1228,15 +1254,24 @@ struct RaceTimingPanel: View {
     }
 
     private func handleRecordPress() {
+        print("🟡 handleRecordPress() called")
         if captureManager.isRecording {
+            print("🟡 Stopping recording...")
             captureManager.stopRecording { _ in
-                print("Stopped video recording")
+                print("🟡 Recording stopped, calling markAsUnsaved()")
+                // Mark as unsaved when recording stops (video data saved)
+                self.markAsUnsaved()
             }
         } else {
+            print("🟡 Starting recording...")
             // Use the output directory (defaults to Desktop)
             captureManager.startRecording(to: captureManager.outputDirectory) { success in
                 if success {
-                    print("Started video recording")
+                    print("🟡 Recording started successfully, calling markAsUnsaved()")
+                    // Mark as unsaved when recording starts
+                    self.markAsUnsaved()
+                } else {
+                    print("🟡 Recording failed to start")
                 }
             }
         }
@@ -1340,7 +1375,7 @@ struct RaceTimingPanel: View {
     }
 
     private var exportedImagesSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             Divider()
 
             Text("Exported Images (\(timingModel.getSelectedImages().count) selected)")
@@ -1354,9 +1389,9 @@ struct RaceTimingPanel: View {
                     .frame(height: 40)
             } else {
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 2) {
+                    LazyVStack(alignment: .leading, spacing: 1) {
                         ForEach(timingModel.exportedImages.reversed(), id: \.self) { imagePath in
-                            HStack(spacing: 8) {
+                            HStack(spacing: 6) {
                                 Toggle("", isOn: Binding(
                                     get: { timingModel.isImageSelected(imagePath) },
                                     set: { _ in timingModel.toggleImageSelection(imagePath) }
@@ -1374,11 +1409,11 @@ struct RaceTimingPanel: View {
                                     .foregroundColor(.secondary)
                             }
                             .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
+                            .padding(.vertical, 1)
                         }
                     }
                 }
-                .frame(maxHeight: 100)
+                .frame(maxHeight: 80)
                 .background(Color.gray.opacity(0.05))
                 .cornerRadius(4)
             }
@@ -1606,14 +1641,18 @@ struct RaceTimingPanel: View {
     }
 
     private func confirmRaceChange() {
-        guard let newRaceName = pendingRaceChange else { return }
-        print("🔄 Confirming race change to: \(newRaceName)")
+        // Check if this is a new race or a race change
+        if pendingNewRace {
+            print("🆕 Confirming new race creation")
+            openNewRaceSheet()
+            pendingNewRace = false
+        } else if let newRaceName = pendingRaceChange {
+            print("🔄 Confirming race change to: \(newRaceName)")
+            // Perform the actual race change
+            loadSelectedRaceData()
+            pendingRaceChange = nil
+        }
 
-        // Perform the actual race change
-        loadSelectedRaceData()
-
-        // Clear pending change
-        pendingRaceChange = nil
         hasUnsavedChanges = false
     }
 
@@ -1629,7 +1668,23 @@ struct RaceTimingPanel: View {
     }
 
     private func markAsUnsaved() {
-        hasUnsavedChanges = true
+        print("🔴 markAsUnsaved() called - setting hasUnsavedChanges = true")
+        DispatchQueue.main.async {
+            self.hasUnsavedChanges = true
+            print("🔴 hasUnsavedChanges is now: \(self.hasUnsavedChanges)")
+        }
+    }
+
+    private func openNewRaceSheet() {
+        // Set default race name with current date/time
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "MMM d HH-mm"
+        newRaceName = "Race \(dateFormatter.string(from: Date()))"
+
+        // Update newTeamNames array to match current maxLanes setting
+        newTeamNames = (1...AppConfig.shared.maxLanes).map { "Lane \($0)" }
+
+        showNewRaceSheet = true
     }
 
 }
