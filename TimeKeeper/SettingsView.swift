@@ -3,7 +3,8 @@ import AVFoundation
 
 struct SettingsView: View {
     @State private var maxLanes: Int = AppConfig.shared.maxLanes
-    @State private var outputDirectory: URL?
+    @State private var freeRacesDirectory: URL?
+    @State private var eventRacesDirectory: URL?
     @State private var selectedDeviceID: String?
     @State private var availableDevices: [AVCaptureDevice] = []
     @State private var selectedQuality: VideoQuality = VideoQuality.standardPresets[1] // Default to HD 1080p
@@ -48,10 +49,11 @@ struct SettingsView: View {
                     Text("File Storage")
                         .font(.headline)
 
+                    // Free Races Output Folder
                     HStack {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Output Folder:")
-                            Text(outputDirectory?.path ?? (FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.path ?? "Temporary Directory"))
+                            Text("Free Races Folder:")
+                            Text(freeRacesDirectory?.path ?? (FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.appendingPathComponent("FreeRaces").path ?? "Temporary Directory"))
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .lineLimit(2)
@@ -60,11 +62,28 @@ struct SettingsView: View {
                         Spacer()
 
                         Button("Choose...") {
-                            selectOutputFolder()
+                            selectFreeRacesFolder()
                         }
                     }
 
-                    Text("Location where race data and exported images are saved")
+                    // Event Races Output Folder
+                    HStack {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Event Races Folder:")
+                            Text(eventRacesDirectory?.path ?? (FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.appendingPathComponent("EventRaces").path ?? "Temporary Directory"))
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .lineLimit(2)
+                        }
+
+                        Spacer()
+
+                        Button("Choose...") {
+                            selectEventRacesFolder()
+                        }
+                    }
+
+                    Text("Separate locations for Free Races and Event-based races")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -180,11 +199,22 @@ struct SettingsView: View {
             }
         }
         .padding()
-        .frame(width: 500, height: 580)
+        .frame(width: 500, height: 640)
         .onAppear {
-            // Load output directory from UserDefaults (same key as CaptureManager)
-            if let path = UserDefaults.standard.string(forKey: "outputDirectory") {
-                outputDirectory = URL(fileURLWithPath: path)
+            // Load Free Races directory from UserDefaults
+            if let path = UserDefaults.standard.string(forKey: "freeRacesDirectory") {
+                freeRacesDirectory = URL(fileURLWithPath: path)
+            } else {
+                // Default to Desktop/FreeRaces
+                freeRacesDirectory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.appendingPathComponent("FreeRaces")
+            }
+
+            // Load Event Races directory from UserDefaults
+            if let path = UserDefaults.standard.string(forKey: "eventRacesDirectory") {
+                eventRacesDirectory = URL(fileURLWithPath: path)
+            } else {
+                // Default to Desktop/EventRaces
+                eventRacesDirectory = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.appendingPathComponent("EventRaces")
             }
 
             // Load available camera devices
@@ -216,17 +246,33 @@ struct SettingsView: View {
         }
     }
 
-    private func selectOutputFolder() {
+    private func selectFreeRacesFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "Select Output Folder"
+        panel.prompt = "Select Free Races Folder"
 
         if panel.runModal() == .OK {
-            outputDirectory = panel.url
+            freeRacesDirectory = panel.url
             // Save to UserDefaults so it persists and can be read by other parts of the app
-            UserDefaults.standard.set(panel.url?.path, forKey: "outputDirectory")
+            UserDefaults.standard.set(panel.url?.path, forKey: "freeRacesDirectory")
+            print("💾 Saved Free Races directory: \(panel.url?.path ?? "nil")")
+        }
+    }
+
+    private func selectEventRacesFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Select Event Races Folder"
+
+        if panel.runModal() == .OK {
+            eventRacesDirectory = panel.url
+            // Save to UserDefaults so it persists and can be read by other parts of the app
+            UserDefaults.standard.set(panel.url?.path, forKey: "eventRacesDirectory")
+            print("💾 Saved Event Races directory: \(panel.url?.path ?? "nil")")
         }
     }
 

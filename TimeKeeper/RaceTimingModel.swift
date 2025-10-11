@@ -17,6 +17,35 @@ class AppConfig {
         }
     }
 
+    // Output directory helpers
+    func getFreeRacesDirectory() -> URL {
+        if let path = UserDefaults.standard.string(forKey: "freeRacesDirectory") {
+            let url = URL(fileURLWithPath: path)
+            // Ensure directory exists
+            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            return url
+        }
+        // Default to Desktop/FreeRaces
+        let defaultURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.appendingPathComponent("FreeRaces") ?? FileManager.default.temporaryDirectory.appendingPathComponent("FreeRaces")
+        // Ensure directory exists
+        try? FileManager.default.createDirectory(at: defaultURL, withIntermediateDirectories: true)
+        return defaultURL
+    }
+
+    func getEventRacesDirectory() -> URL {
+        if let path = UserDefaults.standard.string(forKey: "eventRacesDirectory") {
+            let url = URL(fileURLWithPath: path)
+            // Ensure directory exists
+            try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+            return url
+        }
+        // Default to Desktop/EventRaces
+        let defaultURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first?.appendingPathComponent("EventRaces") ?? FileManager.default.temporaryDirectory.appendingPathComponent("EventRaces")
+        // Ensure directory exists
+        try? FileManager.default.createDirectory(at: defaultURL, withIntermediateDirectories: true)
+        return defaultURL
+    }
+
     private init() {}
 }
 
@@ -317,41 +346,54 @@ class RaceTimingModel: ObservableObject {
             return
         }
 
-        sessionData = loadedSession
-        raceStartTime = loadedSession.raceStartWallclock
-        finishEvents = loadedSession.finishEvents
-        recordingStartupDelay = loadedSession.recordingStartupDelay
-        isRaceActive = false
+        DispatchQueue.main.async {
+            self.sessionData = loadedSession
+            self.raceStartTime = loadedSession.raceStartWallclock
+            self.finishEvents = loadedSession.finishEvents
+            self.recordingStartupDelay = loadedSession.recordingStartupDelay
+            self.isRaceActive = false
+            self.isRaceInitialized = true  // Mark race as initialized after loading
 
-        // Set race elapsed time and stop time based on stored race duration
-        if let raceDuration = loadedSession.raceDuration {
-            // Use stored race duration (manually adjusted)
-            raceElapsedTime = raceDuration
-            if let raceStart = raceStartTime {
-                raceStopTime = raceStart.addingTimeInterval(raceDuration)
-            }
-            print("📊 Loaded race duration: \(raceDuration)s (manually set)")
-        } else if let raceStart = raceStartTime {
-            // Fallback to wallclock calculation
-            if let raceStop = raceStopTime {
-                raceElapsedTime = raceStop.timeIntervalSince(raceStart)
-            } else {
-                // For loaded sessions without stop time, use race duration from finish events
-                let maxFinishTime = loadedSession.finishEvents.map { $0.tRace }.max() ?? 0
-                if maxFinishTime > 0 {
-                    raceElapsedTime = maxFinishTime
-                } else {
-                    // Fallback: don't use current time for old sessions
-                    raceElapsedTime = 0
+            // Set race elapsed time and stop time based on stored race duration
+            if let raceDuration = loadedSession.raceDuration {
+                // Use stored race duration (manually adjusted)
+                self.raceElapsedTime = raceDuration
+                if let raceStart = self.raceStartTime {
+                    self.raceStopTime = raceStart.addingTimeInterval(raceDuration)
                 }
+                print("📊 Loaded race duration: \(raceDuration)s (manually set)")
+            } else if let raceStart = self.raceStartTime {
+                // Fallback to wallclock calculation
+                if let raceStop = self.raceStopTime {
+                    self.raceElapsedTime = raceStop.timeIntervalSince(raceStart)
+                } else {
+                    // For loaded sessions without stop time, use race duration from finish events
+                    let maxFinishTime = loadedSession.finishEvents.map { $0.tRace }.max() ?? 0
+                    if maxFinishTime > 0 {
+                        self.raceElapsedTime = maxFinishTime
+                    } else {
+                        // Fallback: don't use current time for old sessions
+                        self.raceElapsedTime = 0
+                    }
+                }
+                print("📊 Calculated race elapsed time: \(self.raceElapsedTime)s (from wallclock)")
             }
-            print("📊 Calculated race elapsed time: \(raceElapsedTime)s (from wallclock)")
         }
     }
 
     func saveCurrentSession() {
-        // Save to Desktop or the configured output directory
-        let saveDirectory = outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        // Determine the save directory based on race type
+        let saveDirectory: URL
+        if sessionData?.eventId == nil {
+            // Free Race - use Free Races directory
+            saveDirectory = AppConfig.shared.getFreeRacesDirectory()
+            print("💾 Saving to Free Races directory")
+        } else {
+            // Event Race - use Event Races directory
+            saveDirectory = AppConfig.shared.getEventRacesDirectory()
+            print("💾 Saving to Event Races directory")
+        }
+
         let raceName = sessionData?.raceName ?? "Race"
         let sessionFileName = "\(raceName).json"
         let sessionURL = saveDirectory.appendingPathComponent(sessionFileName)

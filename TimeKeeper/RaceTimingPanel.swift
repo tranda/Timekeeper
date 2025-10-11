@@ -48,6 +48,10 @@ struct RaceTimingPanel: View {
     @State private var pendingNewRace = false
     @State private var pendingEventId: Int? = nil
 
+    // Free Races management
+    @State private var availableFreeRaces: [String] = []  // List of race names from saved JSON files
+    @State private var selectedFreeRaceName: String = ""
+
     var body: some View {
         VStack(spacing: 12) {
             // New Race button at the top (visible but disabled during race or when event has race plan)
@@ -88,7 +92,7 @@ struct RaceTimingPanel: View {
                             .frame(width: 80, alignment: .leading)
 
                         Picker("", selection: Binding(
-                            get: { racePlanService.selectedEvent?.id ?? 0 },
+                            get: { racePlanService.selectedEvent?.id ?? -1 },
                             set: { eventId in
                                 // Check for unsaved changes before switching events
                                 if hasUnsavedChanges {
@@ -97,8 +101,17 @@ struct RaceTimingPanel: View {
                                     showSaveConfirmation = true
                                 } else {
                                     // No unsaved changes, switch event directly
-                                    if let event = racePlanService.availableEvents.first(where: { $0.id == eventId }) {
+                                    if eventId == -1 {
+                                        // Free Races mode - clear race plans and reset race data
+                                        racePlanService.clearRacePlans()
+                                        racePlanService.selectedEvent = nil
+                                        timingModel.resetRace()
+                                        // Scan for available free races
+                                        scanForFreeRaces()
+                                    } else if let event = racePlanService.availableEvents.first(where: { $0.id == eventId }) {
                                         racePlanService.selectEvent(event)
+                                        // Reset race data when switching to an event
+                                        timingModel.resetRace()
                                         // Auto-load race plans for the new event
                                         if racePlanService.hasAPIKey() {
                                             racePlanService.fetchRacePlans()
@@ -107,6 +120,13 @@ struct RaceTimingPanel: View {
                                 }
                             }
                         )) {
+                            // Free Races option at the top
+                            Text("Free Races")
+                                .font(.system(size: 18, weight: .bold))
+                                .tag(-1)
+
+                            Divider()
+
                             ForEach(racePlanService.availableEvents) { event in
                                 Text("\(event.name) \(String(event.year)) - \(event.location)")
                                     .tag(event.id)
@@ -124,6 +144,116 @@ struct RaceTimingPanel: View {
                 .background(Color.gray.opacity(0.1))
                 .cornerRadius(8)
                 .padding(.horizontal)
+            }
+
+            // Free Races Control Section (show when in Free Races mode)
+            if racePlanService.selectedEvent == nil && !availableFreeRaces.isEmpty {
+                VStack(spacing: 4) {
+                    HStack {
+                        Text("Race:")
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.secondary)
+                            .frame(width: 80, alignment: .leading)
+
+                        Picker("", selection: $selectedFreeRaceName) {
+                            ForEach(availableFreeRaces, id: \.self) { raceName in
+                                Text(raceName)
+                                    .font(.system(size: 16, weight: .medium))
+                                    .tag(raceName)
+                            }
+                        }
+                        .frame(width: 400)
+                        .disabled(timingModel.isRaceActive)
+                        .onChange(of: selectedFreeRaceName) { newRaceName in
+                            if !newRaceName.isEmpty && newRaceName != timingModel.sessionData?.raceName {
+                                // Check for unsaved changes before switching
+                                if hasUnsavedChanges {
+                                    pendingRaceChange = newRaceName
+                                    showSaveConfirmation = true
+                                } else {
+                                    loadFreeRace(raceName: newRaceName)
+                                }
+                            }
+                        }
+
+                        // Only show Review/Save buttons if a race is actually initialized
+                        if timingModel.isRaceInitialized {
+                        Button(action: {
+                            isReviewMode.toggle()
+
+                            // When entering review mode, load the video if available
+                            if isReviewMode {
+                                loadVideoForReview()
+                            }
+                        }) {
+                            Text(isReviewMode ? "LIVE" : "REVIEW")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 80, height: 35)
+                                .background(isReviewMode ? Color.orange : Color.green)
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                        .help(isReviewMode ? "Switch to live race mode" : "Switch to review mode for editing times")
+
+                        if isReviewMode {
+                            Button(action: {
+                                showVideoFileSelector()
+                            }) {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "folder.badge.plus")
+                                        .font(.caption)
+                                    Text("LOAD VIDEO")
+                                        .font(.system(size: 12, weight: .bold))
+                                }
+                                .foregroundColor(.white)
+                                .frame(height: 35)
+                                .padding(.horizontal, 12)
+                                .background(Color.blue)
+                                .cornerRadius(8)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Load a video file from disk for review")
+                        }
+                        }
+
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 4)
+                .background(Color.gray.opacity(0.05))
+                .cornerRadius(8)
+                .padding(.horizontal)
+
+                // Prominent Save Button for Free Races (only show if race is initialized)
+                if timingModel.isRaceInitialized {
+                Button(action: {
+                    saveCurrentRaceData()
+                }) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(hasUnsavedChanges ? Color.orange : Color.green)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .shadow(color: hasUnsavedChanges ? Color.orange.opacity(0.3) : Color.green.opacity(0.3), radius: 4, x: 0, y: 2)
+
+                        HStack(spacing: 8) {
+                            Image(systemName: hasUnsavedChanges ? "externaldrive.badge.plus" : "externaldrive.badge.checkmark")
+                                .font(.title2)
+                            Text("SAVE")
+                                .font(.system(size: 18, weight: .bold))
+                        }
+                        .foregroundColor(.white)
+                    }
+                }
+                .buttonStyle(.plain)
+                .help(hasUnsavedChanges ? "Save current race data (unsaved changes detected)" : "All changes saved")
+                .scaleEffect(hasUnsavedChanges ? 1.05 : 1.0)
+                .animation(.easeInOut(duration: 0.2), value: hasUnsavedChanges)
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+                }
             }
 
             // Race Plan Selection Section (only show if race plan is available)
@@ -431,8 +561,8 @@ struct RaceTimingPanel: View {
                     exportedImagesSection
                 }
 
-                // Send Results button (only show if race is initialized)
-                if timingModel.isRaceInitialized {
+                // Send Results button (only show if race is initialized and has an event)
+                if timingModel.isRaceInitialized && racePlanService.selectedEvent != nil {
                     Button(action: sendRaceResults) {
                         ZStack {
                             RoundedRectangle(cornerRadius: 10)
@@ -614,6 +744,12 @@ struct RaceTimingPanel: View {
                         showNewRaceSheet = false
                         print("🟢 Resetting hasUnsavedChanges to false after starting new race")
                         hasUnsavedChanges = false  // Reset unsaved changes after new race
+
+                        // If in Free Races mode, update the list
+                        if racePlanService.selectedEvent == nil {
+                            scanForFreeRaces()
+                            selectedFreeRaceName = newRaceName
+                        }
                     }
                     .keyboardShortcut(.return)
                     .buttonStyle(.borderedProminent)
@@ -645,6 +781,30 @@ struct RaceTimingPanel: View {
         .onAppear {
             // Set up the callback for timeline data changes
             onTimelineDataChanged = markAsUnsaved
+
+            // Auto-initialize on first appear
+            if racePlanService.selectedEvent == nil {
+                // In Free Races mode - scan and auto-load first race
+                scanForFreeRaces()
+
+                // Auto-load the first free race if available
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    // Only auto-load if still in Free Races mode and no race initialized
+                    if self.racePlanService.selectedEvent == nil,
+                       !self.availableFreeRaces.isEmpty,
+                       let firstRace = self.availableFreeRaces.first,
+                       !self.timingModel.isRaceInitialized {
+                        print("🚀 Auto-loading first free race: \(firstRace)")
+                        self.loadFreeRace(raceName: firstRace)
+                    }
+                }
+            } else if let selectedEvent = racePlanService.selectedEvent {
+                // In Event mode - fetch race plans if we have an API key
+                if racePlanService.hasAPIKey() {
+                    print("🚀 Auto-fetching race plans for selected event: \(selectedEvent.name)")
+                    racePlanService.fetchRacePlans()
+                }
+            }
         }
     }
 
@@ -1172,8 +1332,8 @@ struct RaceTimingPanel: View {
 
     // Load existing session data for a race if JSON file exists
     private func loadExistingSessionForRace(raceName: String) {
-        // Search for JSON session files in the output directory
-        let outputDirectory = captureManager.outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        // Search for JSON session files in the Event Races directory
+        let outputDirectory = AppConfig.shared.getEventRacesDirectory()
 
         let sessionFileName = "\(raceName).json"
         let sessionURL = outputDirectory.appendingPathComponent(sessionFileName)
@@ -1661,6 +1821,11 @@ struct RaceTimingPanel: View {
         print("💾 Saving current race data...")
         timingModel.saveCurrentSession()
         hasUnsavedChanges = false
+
+        // Rescan for free races after saving (the file now exists on disk)
+        if racePlanService.selectedEvent == nil {
+            scanForFreeRaces()
+        }
     }
 
     private func confirmRaceChange() {
@@ -1672,7 +1837,14 @@ struct RaceTimingPanel: View {
         } else if let eventId = pendingEventId {
             print("🔄 Confirming event change to ID: \(eventId)")
             // Perform the actual event change
-            if let event = racePlanService.availableEvents.first(where: { $0.id == eventId }) {
+            if eventId == -1 {
+                // Free Races mode - clear race plans and reset race data
+                racePlanService.clearRacePlans()
+                racePlanService.selectedEvent = nil
+                timingModel.resetRace()
+                // Scan for available free races
+                scanForFreeRaces()
+            } else if let event = racePlanService.availableEvents.first(where: { $0.id == eventId }) {
                 racePlanService.selectEvent(event)
                 // Auto-load race plans for the new event
                 if racePlanService.hasAPIKey() {
@@ -1683,7 +1855,13 @@ struct RaceTimingPanel: View {
         } else if let newRaceName = pendingRaceChange {
             print("🔄 Confirming race change to: \(newRaceName)")
             // Perform the actual race change
-            loadSelectedRaceData()
+            if racePlanService.selectedEvent == nil {
+                // Free race - load from file
+                loadFreeRace(raceName: newRaceName)
+            } else {
+                // Event race - load from race plan
+                loadSelectedRaceData()
+            }
             pendingRaceChange = nil
         }
 
@@ -1719,6 +1897,105 @@ struct RaceTimingPanel: View {
         newTeamNames = (1...AppConfig.shared.maxLanes).map { "Lane \($0)" }
 
         showNewRaceSheet = true
+    }
+
+    // MARK: - Free Races Management
+
+    private func scanForFreeRaces() {
+        let outputDirectory = AppConfig.shared.getFreeRacesDirectory()
+
+        print("🔍 scanForFreeRaces() called")
+        print("🔍 Free Races directory: \(outputDirectory.path)")
+
+        do {
+            let contents = try FileManager.default.contentsOfDirectory(at: outputDirectory, includingPropertiesForKeys: [.creationDateKey], options: [])
+
+            print("🔍 Total files in directory: \(contents.count)")
+
+            // Filter for .json files and extract race names
+            let jsonFiles = contents.filter { $0.pathExtension.lowercased() == "json" }
+            print("🔍 JSON files found: \(jsonFiles.count)")
+            for jsonFile in jsonFiles {
+                print("  - \(jsonFile.lastPathComponent)")
+            }
+            let raceNames = jsonFiles.map { $0.deletingPathExtension().lastPathComponent }
+
+            // Sort by most recent first
+            let sortedFiles = jsonFiles.sorted { file1, file2 in
+                let date1 = (try? file1.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? Date.distantPast
+                let date2 = (try? file2.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? Date.distantPast
+                return date1 > date2
+            }
+
+            availableFreeRaces = sortedFiles.map { $0.deletingPathExtension().lastPathComponent }
+
+            print("📋 Found \(availableFreeRaces.count) free races: \(availableFreeRaces)")
+
+            // Set current race name if we have one
+            if let currentRaceName = timingModel.sessionData?.raceName, !currentRaceName.isEmpty {
+                selectedFreeRaceName = currentRaceName
+                print("🔍 Set selectedFreeRaceName to current race: \(currentRaceName)")
+            } else if let firstRace = availableFreeRaces.first {
+                selectedFreeRaceName = firstRace
+                print("🔍 Set selectedFreeRaceName to first race: \(firstRace)")
+            }
+        } catch {
+            print("⚠️ Error scanning for free races: \(error)")
+            availableFreeRaces = []
+        }
+    }
+
+    private func loadFreeRace(raceName: String) {
+        let outputDirectory = AppConfig.shared.getFreeRacesDirectory()
+        let sessionURL = outputDirectory.appendingPathComponent("\(raceName).json")
+
+        print("📂 loadFreeRace() called for: \(raceName)")
+        print("📂 Free Races session URL: \(sessionURL.path)")
+
+        guard FileManager.default.fileExists(atPath: sessionURL.path) else {
+            print("⚠️ Race file not found: \(sessionURL.path)")
+            return
+        }
+
+        print("📂 Loading free race: \(raceName)")
+
+        // Auto-exit review mode when changing races
+        isReviewMode = false
+
+        // Load the session
+        timingModel.loadSession(from: sessionURL)
+
+        print("📂 After loading session:")
+        print("   - isRaceInitialized: \(timingModel.isRaceInitialized)")
+        print("   - sessionData exists: \(timingModel.sessionData != nil)")
+        print("   - race name: \(timingModel.sessionData?.raceName ?? "nil")")
+        print("   - team names count: \(timingModel.sessionData?.teamNames.count ?? 0)")
+        print("   - finish events count: \(timingModel.finishEvents.count)")
+
+        // Load video if available
+        if let videoFilePath = timingModel.sessionData?.videoFilePath,
+           FileManager.default.fileExists(atPath: videoFilePath) {
+            print("🎥 Loading video from session: \(videoFilePath)")
+            loadVideoFromPath(videoFilePath)
+        } else {
+            // Try to find video by race name
+            if let autoFoundVideo = findLatestVideoForRace(raceName: raceName) {
+                print("🎥 Auto-found video: \(autoFoundVideo.path)")
+                loadVideoFromPath(autoFoundVideo.path)
+                timingModel.sessionData?.videoFilePath = autoFoundVideo.path
+            } else {
+                print("📹 No video found for race")
+            }
+        }
+
+        // Update selected race name
+        selectedFreeRaceName = raceName
+
+        // Clear unsaved changes flag
+        hasUnsavedChanges = false
+
+        print("✅ Free race loaded: \(raceName)")
+        print("✅ Final isRaceInitialized: \(timingModel.isRaceInitialized)")
     }
 
 }

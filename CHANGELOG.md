@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.3] - 2025-01-11
+
+### Added
+- **Separate Output Folders for Race Types**: Automatic file organization by race type
+  - Free Races folder: Default to Desktop/FreeRaces for all custom races
+  - Event Races folder: Default to Desktop/EventRaces for all API-connected races
+  - Both folders configurable in Preferences with custom locations
+  - Automatic directory creation when needed
+  - Clean separation prevents file mixing between race types
+
+### Improved
+- **Automatic Storage Routing**: Session data automatically saved to correct folder
+  - Free Races (no eventId) save to Free Races directory
+  - Event Races (with eventId) save to Event Races directory
+  - No manual intervention required for folder selection
+- **Easy Migration**: Existing race files can be copied to new folders and work immediately
+
 ## [0.7.2] - 2025-01-11
 
 ### Improved
