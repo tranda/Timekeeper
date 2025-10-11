@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Unsaved Changes Protection**: Comprehensive confirmation dialogs for all navigation actions
+  - Event picker now checks for unsaved changes before switching events
+  - Race picker already had confirmation via reactive system
+  - NEW RACE button confirmation implemented
+  - Video recording via keyboard shortcuts now properly marks data as unsaved
+  - Prevents accidental data loss when navigating between events and races
+
 ## [0.6.2] - 2025-01-08
 
 ### Added
