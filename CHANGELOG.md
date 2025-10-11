@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] - 2025-01-11
+
+### Improved
+- **Lane Number Display**: Enhanced lane selection dialogs to show lane numbers
+  - Timeline marker selection now displays "Lane X: [Team Name]" format
+  - New Race dialog lane setup shows clear lane numbering
+  - Improved usability when identifying lanes during race timing
+
 ### Fixed
 - **Unsaved Changes Protection**: Comprehensive confirmation dialogs for all navigation actions
   - Event picker now checks for unsaved changes before switching events

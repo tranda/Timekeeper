@@ -38,4 +38,4 @@ Examples:
 - "increase major version": 0.9.3 → 1.0.0
 - Beyond 9: 0.5.9 → 0.5.10 → 0.5.11...
 
-Current version: 0.7.0
+Current version: 0.7.1
