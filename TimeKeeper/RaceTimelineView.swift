@@ -536,8 +536,15 @@ struct RaceTimelineView: View {
         if playerViewModel.showPhotoFinishOverlay {
             let fileName = "\(raceName)-photo_finish-\(timeString).jpg"
 
-            // Save to output directory (same as race session)
-            let outputDirectory = timingModel.outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            // Save to race-type specific directory
+            let outputDirectory: URL
+            if timingModel.sessionData?.eventId == nil {
+                // Free Race - use Free Races directory
+                outputDirectory = AppConfig.shared.getFreeRacesDirectory()
+            } else {
+                // Event Race - use Event Races directory
+                outputDirectory = AppConfig.shared.getEventRacesDirectory()
+            }
             let outputURL = outputDirectory.appendingPathComponent(fileName)
 
             // Get actual video dimensions
@@ -582,8 +589,15 @@ struct RaceTimelineView: View {
         } else {
             let fileName = "\(raceName)-\(timeString).jpg"
 
-            // Save to output directory (same as race session)
-            let outputDirectory = timingModel.outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            // Save to race-type specific directory
+            let outputDirectory: URL
+            if timingModel.sessionData?.eventId == nil {
+                // Free Race - use Free Races directory
+                outputDirectory = AppConfig.shared.getFreeRacesDirectory()
+            } else {
+                // Event Race - use Event Races directory
+                outputDirectory = AppConfig.shared.getEventRacesDirectory()
+            }
             let outputURL = outputDirectory.appendingPathComponent(fileName)
 
             // Standard export without overlay

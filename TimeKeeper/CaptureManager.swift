@@ -643,7 +643,23 @@ class CaptureManager: NSObject, ObservableObject {
             return
         }
 
-        let outputFolder = folder ?? outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        // Determine output folder based on race type if folder not explicitly provided
+        let outputFolder: URL
+        if let explicitFolder = folder {
+            outputFolder = explicitFolder
+        } else if let eventId = timingModel?.sessionData?.eventId {
+            // Event Race - use Event Races directory
+            outputFolder = AppConfig.shared.getEventRacesDirectory()
+            print("📹 Recording to Event Races directory")
+        } else if timingModel?.sessionData != nil {
+            // Free Race - use Free Races directory
+            outputFolder = AppConfig.shared.getFreeRacesDirectory()
+            print("📹 Recording to Free Races directory")
+        } else {
+            // Fallback to legacy outputDirectory or Desktop
+            outputFolder = outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+            print("📹 Recording to fallback directory (no race initialized)")
+        }
 
         // Use race name from timing model if available
         let raceName = timingModel?.sessionData?.raceName ?? "Race"

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.4] - 2025-01-11
+
+### Fixed
+- **Complete File Path Integration**: All file operations now properly use race-type specific directories
+  - Video recording automatically saves to correct folder (Free Races or Event Races)
+  - Image exports save to correct folder based on race type
+  - Video search prioritizes race-type directories for reliable loading after file relocation
+  - Session data properly resolves image paths from race-type directories
+  - Backward compatibility maintained with legacy directory fallbacks
+
+### Improved
+- **Reliable File Loading**: Videos and images now load correctly after relocating files to new separate folders
+- **Automatic Directory Routing**: All file operations automatically determine correct folder based on eventId
+- **Clean Migration**: Relocated race files work immediately without path issues
+
 ## [0.7.3] - 2025-01-11
 
 ### Added

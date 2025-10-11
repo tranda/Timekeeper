@@ -1134,7 +1134,20 @@ struct RaceTimingPanel: View {
         // Search common video locations
         var searchPaths: [URL] = []
 
-        // Add standard directories
+        // PRIORITY: Add race-type specific directories first
+        if racePlanService.selectedEvent == nil {
+            // Free Races mode - search Free Races directory first
+            let freeRacesDir = AppConfig.shared.getFreeRacesDirectory()
+            searchPaths.append(freeRacesDir)
+            print("🔍 Searching Free Races directory: \(freeRacesDir.path)")
+        } else {
+            // Event mode - search Event Races directory first
+            let eventRacesDir = AppConfig.shared.getEventRacesDirectory()
+            searchPaths.append(eventRacesDir)
+            print("🔍 Searching Event Races directory: \(eventRacesDir.path)")
+        }
+
+        // Add standard directories as fallback
         if let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first {
             searchPaths.append(desktop)
         }
@@ -1142,13 +1155,13 @@ struct RaceTimingPanel: View {
             searchPaths.append(documents)
         }
 
-        // Add configured output directory
+        // Add configured output directory (legacy)
         if let outputDir = timingModel.outputDirectory {
             searchPaths.append(outputDir)
             print("🔍 Searching configured output directory: \(outputDir.path)")
         }
 
-        // Add capture manager output directory (might be different)
+        // Add capture manager output directory (legacy)
         if let captureOutputDir = captureManager.outputDirectory {
             searchPaths.append(captureOutputDir)
             print("🔍 Searching capture output directory: \(captureOutputDir.path)")

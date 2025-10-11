@@ -128,8 +128,15 @@ class RaceTimingModel: ObservableObject {
 
     var exportedImages: [String] {
         let filenames = sessionData?.exportedImages ?? []
-        // Convert filenames back to full paths (in the output directory)
-        let outputDir = outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        // Convert filenames back to full paths (in race-type specific directory)
+        let outputDir: URL
+        if sessionData?.eventId == nil {
+            // Free Race
+            outputDir = AppConfig.shared.getFreeRacesDirectory()
+        } else {
+            // Event Race
+            outputDir = AppConfig.shared.getEventRacesDirectory()
+        }
         return filenames.map { filename in
             outputDir.appendingPathComponent(filename).path
         }
@@ -303,8 +310,15 @@ class RaceTimingModel: ObservableObject {
 
     func getSelectedImages() -> [String] {
         let selectedFilenames = Array(sessionData?.selectedImagesForSending ?? Set<String>())
-        // Convert filenames back to full paths (in the output directory)
-        let outputDir = outputDirectory ?? FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory
+        // Convert filenames back to full paths (in race-type specific directory)
+        let outputDir: URL
+        if sessionData?.eventId == nil {
+            // Free Race
+            outputDir = AppConfig.shared.getFreeRacesDirectory()
+        } else {
+            // Event Race
+            outputDir = AppConfig.shared.getEventRacesDirectory()
+        }
         return selectedFilenames.map { filename in
             outputDir.appendingPathComponent(filename).path
         }
