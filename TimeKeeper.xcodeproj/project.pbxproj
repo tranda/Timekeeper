@@ -19,6 +19,9 @@
 		B5A0C1132B0000000000000C /* KeychainService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C1122B0000000000000C /* KeychainService.swift */; };
 		B5A0C1152B0000000000000D /* RacePlanService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C1142B0000000000000D /* RacePlanService.swift */; };
 		B5A0C1172B0000000000000E /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C1162B0000000000000E /* SettingsView.swift */; };
+		B5A0C2012B00000000000010 /* MotionInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2002B0000000000000F /* MotionInspector.swift */; };
+		B5A0C2032B00000000000012 /* DetectionLineOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2022B00000000000011 /* DetectionLineOverlayView.swift */; };
+		B5A0C2052B00000000000014 /* MotionSweepSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2042B00000000000013 /* MotionSweepSheet.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -35,6 +38,9 @@
 		B5A0C1122B0000000000000C /* KeychainService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainService.swift; sourceTree = "<group>"; };
 		B5A0C1142B0000000000000D /* RacePlanService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RacePlanService.swift; sourceTree = "<group>"; };
 		B5A0C1162B0000000000000E /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		B5A0C2002B0000000000000F /* MotionInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionInspector.swift; sourceTree = "<group>"; };
+		B5A0C2022B00000000000011 /* DetectionLineOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionLineOverlayView.swift; sourceTree = "<group>"; };
+		B5A0C2042B00000000000013 /* MotionSweepSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSweepSheet.swift; sourceTree = "<group>"; };
 		B5A0C10E2B00000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B5A0C10F2B00000000000007 /* TimeKeeper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TimeKeeper.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -81,6 +87,9 @@
 				B5A0C1122B0000000000000C /* KeychainService.swift */,
 				B5A0C1142B0000000000000D /* RacePlanService.swift */,
 				B5A0C1162B0000000000000E /* SettingsView.swift */,
+				B5A0C2002B0000000000000F /* MotionInspector.swift */,
+				B5A0C2022B00000000000011 /* DetectionLineOverlayView.swift */,
+				B5A0C2042B00000000000013 /* MotionSweepSheet.swift */,
 				B5A0C10E2B00000000000006 /* Info.plist */,
 				B5A0C10F2B00000000000007 /* TimeKeeper.entitlements */,
 			);
@@ -167,6 +176,9 @@
 				B5A0C1132B0000000000000C /* KeychainService.swift in Sources */,
 				B5A0C1152B0000000000000D /* RacePlanService.swift in Sources */,
 				B5A0C1172B0000000000000E /* SettingsView.swift in Sources */,
+				B5A0C2012B00000000000010 /* MotionInspector.swift in Sources */,
+				B5A0C2032B00000000000012 /* DetectionLineOverlayView.swift in Sources */,
+				B5A0C2052B00000000000014 /* MotionSweepSheet.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

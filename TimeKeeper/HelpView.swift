@@ -152,6 +152,42 @@ struct HelpView: View {
 
                     Divider()
 
+                    // Virtual Finish Line — Phase A
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Virtual Finish Line (Inspection)")
+                            .font(.title2)
+                            .fontWeight(.semibold)
+                            .foregroundColor(.blue)
+
+                        Text("Experimental motion-detection inspection mode. Lets you verify whether boats produce a clean motion signal on a finish line drawn over the video, before any auto-suggested finish times are added.")
+                            .font(.body)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            HelpNote(
+                                icon: "scope",
+                                color: .cyan,
+                                text: "Toggle \"Detection Line\" in review mode, then click-and-drag across the finish buoys. The cyan line is divided into N equal lane sections (N = team count) shown as small white tick marks."
+                            )
+                            HelpNote(
+                                icon: "eye",
+                                color: .yellow,
+                                text: "Toggle \"Motion Overlay\" to highlight pixels (yellow) that differ from the rolling baseline (mean of frames at t-0.3s, t-0.6s, t-1.0s) by more than the threshold. Scrub through the race to see what the algorithm sees."
+                            )
+                            HelpNote(
+                                icon: "tablecells",
+                                color: .green,
+                                text: "Click \"Run Sweep…\" to walk the entire clip and write a CSV next to the video: time_s, lane_idx, motion_energy, peak_offset_along_line. Plot motion_energy vs time_s in Numbers — clear narrow peaks at known finish times mean the signal is usable."
+                            )
+                            HelpNote(
+                                icon: "exclamationmark.triangle.fill",
+                                color: .orange,
+                                text: "Phase A is inspection-only — no finish times are auto-recorded. Validate on real race footage before deciding whether to build the full auto-suggestion pipeline."
+                            )
+                        }
+                    }
+
+                    Divider()
+
                     // Lane Status
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Lane Status Management")

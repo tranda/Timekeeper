@@ -6,7 +6,16 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(find:*)",
-      "Bash(open \"/Users/zorantrandafilovic/Library/Developer/Xcode/DerivedData/TimeKeeper-dggblasvfdpwjuazmiprpyuzepwz/Build/Products/Debug/TimeKeeper.app\")"
+      "Bash(open \"/Users/zorantrandafilovic/Library/Developer/Xcode/DerivedData/TimeKeeper-dggblasvfdpwjuazmiprpyuzepwz/Build/Products/Debug/TimeKeeper.app\")",
+      "Bash(grep -n \"finishLineTopX\\\\|finishLineBottomX\" /Users/zorantrandafilovic/Documents/Timekeeping/TimeKeeper/*.swift)",
+      "Bash(grep -n \"async\\\\|await\\\\|\\\\.sink\\\\|\\\\.subscribe\\\\|Combine\" /Users/zorantrandafilovic/Documents/Timekeeping/TimeKeeper/*.swift)",
+      "Bash(grep -n \"AVAssetImageGenerator\\\\|AVAssetReader\\\\|AVAsset\" /Users/zorantrandafilovic/Documents/Timekeeping/TimeKeeper/*.swift)",
+      "Bash(grep -n \"lastRecordedURL\\\\|videoFilePath\" /Users/zorantrandafilovic/Documents/Timekeeping/TimeKeeper/*.swift)",
+      "Bash(open /Users/zorantrandafilovic/Library/Developer/Xcode/DerivedData/TimeKeeper-dggblasvfdpwjuazmiprpyuzepwz/Build/Products/Debug/TimeKeeper.app)",
+      "Bash(pkill -x TimeKeeper)",
+      "Bash(printf '\\\\n\\\\n')",
+      "Bash(/Users/zorantrandafilovic/Documents/Timekeeping/TimeKeeper/ContentView.swift:*)",
+      "Bash(/Users/zorantrandafilovic/Documents/Timekeeping/TimeKeeper/RaceTimelineView.swift:*)"
     ],
     "deny": [],
     "ask": []

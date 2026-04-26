@@ -28,6 +28,10 @@ class AVPlayerView_Internal: AVKit.AVPlayerView {
 }
 
 struct ContentView: View {
+    /// Phase A motion-inspection feature flag — toggleable in Preferences.
+    /// All supporting code stays in place; UI is hidden when this is false.
+    @AppStorage("motionInspectionEnabled") private var motionInspectionEnabled: Bool = false
+
     @StateObject private var captureManager = CaptureManager()
     @StateObject private var playerViewModel = PlayerViewModel()
     @StateObject private var timingModel = RaceTimingModel()
@@ -42,6 +46,17 @@ struct ContentView: View {
     @State private var triggerLaneSelection = false
     @State private var isReviewMode = false
     @State private var markTimelineDataAsUnsaved: () -> Void = {}
+
+    // Virtual finish line — Phase A motion inspection
+    @State private var motionOverlayImage: CGImage? = nil
+    @State private var motionOverlayTask: Task<Void, Never>? = nil
+    @State private var showMotionSweepSheet = false
+    @State private var motionEnergy: Int = 0
+    @State private var motionCentroid: Double = 0
+    @State private var motionMaxRecent: Int = 1   // running max for bar normalization
+    @State private var motionRoiHalfWidthPx: Int = 40
+    @State private var motionTStart: Double = 0.0   // analysis sub-segment start (along line)
+    @State private var motionTEnd: Double = 1.0     // analysis sub-segment end (along line)
 
     var body: some View {
         HStack(spacing: 0) {
@@ -85,9 +100,83 @@ struct ContentView: View {
                         // Show recorded video player when in review mode
                         if isReviewMode {
                             VStack(spacing: 5) {
-                                Text("Recorded Video")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
+                                if motionInspectionEnabled {
+                                HStack(spacing: 12) {
+                                    Text("Recorded Video")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Toggle("Motion Overlay", isOn: $playerViewModel.showMotionOverlay)
+                                        .toggleStyle(.switch)
+                                        .controlSize(.small)
+                                        .help("Highlights pixels along the yellow finish line that differ from the rolling baseline (frame-diff)")
+                                    HStack(spacing: 4) {
+                                        Text("Thr").font(.caption2).foregroundColor(.secondary)
+                                        Stepper(value: $playerViewModel.motionThreshold, in: 3...200, step: 1) {
+                                            Text("\(playerViewModel.motionThreshold)")
+                                                .frame(width: 28, alignment: .trailing)
+                                                .font(.caption2.monospacedDigit())
+                                        }
+                                        .controlSize(.mini)
+                                    }
+                                    HStack(spacing: 4) {
+                                        Text("ROI±").font(.caption2).foregroundColor(.secondary)
+                                        Stepper(value: $motionRoiHalfWidthPx, in: 5...200, step: 5) {
+                                            Text("\(motionRoiHalfWidthPx)px")
+                                                .frame(width: 40, alignment: .trailing)
+                                                .font(.caption2.monospacedDigit())
+                                        }
+                                        .controlSize(.mini)
+                                    }
+                                    Button("Run Sweep…") {
+                                        showMotionSweepSheet = true
+                                    }
+                                    .controlSize(.small)
+                                    .disabled((recordedVideoURL ?? captureManager.lastRecordedURL) == nil)
+                                }
+                                .padding(.horizontal, 8)
+
+                                // Live energy + centroid display
+                                if playerViewModel.showMotionOverlay {
+                                    HStack(spacing: 10) {
+                                        Text("Motion:").font(.caption2).foregroundColor(.secondary)
+                                        let frac = motionMaxRecent > 0 ? Double(motionEnergy) / Double(motionMaxRecent) : 0
+                                        ZStack(alignment: .leading) {
+                                            Rectangle().fill(Color.secondary.opacity(0.18)).frame(width: 160, height: 14)
+                                            Rectangle().fill(barColor(for: frac)).frame(width: max(1, CGFloat(frac) * 160), height: 14)
+                                        }
+                                        Text("energy=\(motionEnergy)")
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 90, alignment: .leading)
+                                        Text(motionEnergy > 0 ? String(format: "centroid=%.2f", motionCentroid) : "centroid=–")
+                                            .font(.caption2.monospacedDigit())
+                                            .foregroundColor(.secondary)
+                                            .frame(width: 110, alignment: .leading)
+                                        Button("Reset peak") {
+                                            motionMaxRecent = max(1, motionEnergy)
+                                        }
+                                        .controlSize(.mini)
+                                    }
+                                    .padding(.horizontal, 8)
+
+                                    // Drag the green handles directly on the finish line; this is just a readout/reset.
+                                    HStack(spacing: 10) {
+                                        Text(String(format: "Analyzing %.0f%% → %.0f%% of line (drag green handles to adjust)", motionTStart * 100, motionTEnd * 100))
+                                            .font(.caption2).foregroundColor(.secondary)
+                                        Button("Full line") {
+                                            motionTStart = 0; motionTEnd = 1
+                                        }
+                                        .controlSize(.mini)
+                                    }
+                                    .padding(.horizontal, 8)
+                                }
+                                } else {
+                                    // Original "Recorded Video" header when motion inspection is disabled.
+                                    Text("Recorded Video")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
                                 GeometryReader { outerGeometry in
                                     HStack {
                                         Spacer()
@@ -214,6 +303,25 @@ struct ContentView: View {
 
                                                             }
                                                         }
+                                                    }
+
+                                                    // Virtual finish line — motion overlay (transparent CGImage above the video)
+                                                    if playerViewModel.showMotionOverlay, let overlay = motionOverlayImage {
+                                                        Image(decorative: overlay, scale: 1.0)
+                                                            .resizable()
+                                                            .interpolation(.none)
+                                                            .aspectRatio(contentMode: .fit)
+                                                            .allowsHitTesting(false)
+                                                    }
+
+                                                    // Detection segment handles — only when Motion Overlay is on
+                                                    if playerViewModel.showMotionOverlay {
+                                                        DetectionSegmentHandles(
+                                                            topX: playerViewModel.finishLineTopX,
+                                                            bottomX: playerViewModel.finishLineBottomX,
+                                                            tStart: $motionTStart,
+                                                            tEnd: $motionTEnd
+                                                        )
                                                     }
 
                                                 }
@@ -372,7 +480,7 @@ struct ContentView: View {
                         triggerLaneSelection: $triggerLaneSelection,
                         onDataChanged: markTimelineDataAsUnsaved
                     )
-                    .frame(height: 300)
+                    .frame(height: playerViewModel.motionSweepRows.isEmpty ? 300 : 350)
                     .padding(.horizontal)
                 }
                 Spacer()
@@ -385,6 +493,59 @@ struct ContentView: View {
             Button("OK") { }
         } message: {
             Text("Frame exported successfully")
+        }
+        .sheet(isPresented: $showMotionSweepSheet) {
+            if let url = recordedVideoURL ?? captureManager.lastRecordedURL {
+                MotionSweepSheet(
+                    videoURL: url,
+                    p1: CGPoint(x: playerViewModel.finishLineTopX, y: 0),
+                    p2: CGPoint(x: playerViewModel.finishLineBottomX, y: 1),
+                    roiHalfWidthPx: motionRoiHalfWidthPx,
+                    tStart: motionTStart,
+                    tEnd: motionTEnd,
+                    initialThreshold: playerViewModel.motionThreshold,
+                    initialRows: playerViewModel.motionSweepRows,
+                    initialCrossings: playerViewModel.motionCrossings,
+                    onSeek: { t in
+                        playerViewModel.seek(to: t, precise: true)
+                    },
+                    onSweepCompleted: { rows, crossings in
+                        playerViewModel.motionSweepRows = rows
+                        playerViewModel.motionCrossings = crossings
+                    },
+                    onClose: { showMotionSweepSheet = false }
+                )
+            } else {
+                VStack(spacing: 12) {
+                    Text("Cannot run sweep")
+                    Text("A recorded video is required.")
+                        .font(.caption).foregroundColor(.secondary)
+                    Button("Close") { showMotionSweepSheet = false }
+                }
+                .padding(20)
+            }
+        }
+        .onChange(of: playerViewModel.currentTime) { _ in scheduleMotionOverlayRefresh() }
+        .onChange(of: playerViewModel.showMotionOverlay) { on in
+            if on { scheduleMotionOverlayRefresh() } else { motionOverlayImage = nil }
+        }
+        .onChange(of: playerViewModel.motionThreshold) { _ in
+            if playerViewModel.showMotionOverlay { scheduleMotionOverlayRefresh() }
+        }
+        .onChange(of: motionRoiHalfWidthPx) { _ in
+            if playerViewModel.showMotionOverlay { scheduleMotionOverlayRefresh() }
+        }
+        .onChange(of: playerViewModel.finishLineTopX) { _ in
+            if playerViewModel.showMotionOverlay { scheduleMotionOverlayRefresh() }
+        }
+        .onChange(of: playerViewModel.finishLineBottomX) { _ in
+            if playerViewModel.showMotionOverlay { scheduleMotionOverlayRefresh() }
+        }
+        .onChange(of: motionTStart) { _ in
+            if playerViewModel.showMotionOverlay { scheduleMotionOverlayRefresh() }
+        }
+        .onChange(of: motionTEnd) { _ in
+            if playerViewModel.showMotionOverlay { scheduleMotionOverlayRefresh() }
         }
         .onAppear {
             captureManager.checkPermissions()
@@ -448,6 +609,73 @@ struct ContentView: View {
             return String(format: "%02d:%02d.%03d", minutes, secs, millis)
         } else {
             return "Before race start"
+        }
+    }
+
+    // MARK: - Motion Overlay (Phase A virtual finish line)
+
+    private func barColor(for frac: Double) -> Color {
+        // 0..0.33 = blue (no signal), 0.33..0.66 = yellow, 0.66..1 = red (strong fire)
+        if frac < 0.05 { return Color.gray.opacity(0.5) }
+        if frac < 0.33 { return Color.cyan }
+        if frac < 0.66 { return Color.yellow }
+        return Color.red
+    }
+
+
+    private func scheduleMotionOverlayRefresh() {
+        guard playerViewModel.showMotionOverlay,
+              (recordedVideoURL ?? captureManager.lastRecordedURL) != nil else {
+            return
+        }
+        motionOverlayTask?.cancel()
+        motionOverlayTask = Task {
+            // Debounce — coalesce rapid scrub updates.
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            if Task.isCancelled { return }
+            await refreshMotionOverlay()
+        }
+    }
+
+    private func refreshMotionOverlay() async {
+        guard let url = recordedVideoURL ?? captureManager.lastRecordedURL else { return }
+        let t = playerViewModel.currentTime
+        let threshold = playerViewModel.motionThreshold
+        let p1 = CGPoint(x: playerViewModel.finishLineTopX, y: 0)
+        let p2 = CGPoint(x: playerViewModel.finishLineBottomX, y: 1)
+        let roi = motionRoiHalfWidthPx
+        let tStart = motionTStart
+        let tEnd = motionTEnd
+        let result: MotionAnalysisResult? = await Task.detached(priority: .userInitiated) {
+            let asset = AVAsset(url: url)
+            let gen = AVAssetImageGenerator(asset: asset)
+            gen.requestedTimeToleranceBefore = .zero
+            gen.requestedTimeToleranceAfter = .zero
+            gen.appliesPreferredTrackTransform = true
+            let curT = CMTime(seconds: max(0, t), preferredTimescale: 600)
+            guard let cur = try? gen.copyCGImage(at: curT, actualTime: nil) else { return nil }
+            var baselines: [CGImage] = []
+            for d in MotionInspector.defaultBaselineDeltas {
+                let bt = CMTime(seconds: max(0, t + d), preferredTimescale: 600)
+                if let b = try? gen.copyCGImage(at: bt, actualTime: nil) {
+                    baselines.append(b)
+                }
+            }
+            guard !baselines.isEmpty else { return nil }
+            return MotionInspector.motionAnalysis(
+                currentFrame: cur, baselines: baselines,
+                normalizedP1: p1, normalizedP2: p2,
+                roiHalfWidthPx: roi, threshold: threshold,
+                tStart: tStart, tEnd: tEnd
+            )
+        }.value
+        if Task.isCancelled { return }
+        await MainActor.run {
+            self.motionOverlayImage = result?.overlay
+            let e = result?.energy ?? 0
+            self.motionEnergy = e
+            self.motionCentroid = result?.centroidOffsetAlongLine ?? 0
+            if e > self.motionMaxRecent { self.motionMaxRecent = e }
         }
     }
 
@@ -762,5 +990,97 @@ struct ContentView: View {
         // Save current session
         timingModel.saveCurrentSession()
         print("Session saved via shortcut")
+    }
+}
+
+
+
+// MARK: - Detection Segment Handles
+//
+// Two draggable green handles overlaid on the existing yellow finish line that
+// define which sub-segment of the line is used for motion analysis. The handles
+// snap to the line itself (interpolating between top/bottom endpoints), so
+// dragging only adjusts t in [0, 1] along the line — not perpendicular position.
+struct DetectionSegmentHandles: View {
+    let topX: Double          // PlayerViewModel.finishLineTopX (normalized 0..1)
+    let bottomX: Double       // PlayerViewModel.finishLineBottomX (normalized 0..1)
+    @Binding var tStart: Double  // 0..1, top of analyzed segment
+    @Binding var tEnd: Double    // 0..1, bottom of analyzed segment
+
+    var body: some View {
+        GeometryReader { geo in
+            let p1 = CGPoint(x: topX * geo.size.width, y: 0)
+            let p2 = CGPoint(x: bottomX * geo.size.width, y: geo.size.height)
+
+            // Highlight the analyzed segment with a thicker green stroke.
+            let segStart = lerp(p1, p2, t: tStart)
+            let segEnd   = lerp(p1, p2, t: tEnd)
+            ZStack {
+                Path { p in
+                    p.move(to: segStart)
+                    p.addLine(to: segEnd)
+                }
+                .stroke(Color.green.opacity(0.55), lineWidth: 4)
+                .allowsHitTesting(false)
+
+                // Top (start) handle
+                handleCircle(at: segStart)
+                    .gesture(dragGesture(geoSize: geo.size, isStart: true))
+                Text(String(format: "%.0f%%", tStart * 100))
+                    .font(.system(size: 10).bold())
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Color.black.opacity(0.6)).cornerRadius(3)
+                    .position(x: segStart.x + 26, y: segStart.y)
+                    .allowsHitTesting(false)
+
+                // Bottom (end) handle
+                handleCircle(at: segEnd)
+                    .gesture(dragGesture(geoSize: geo.size, isStart: false))
+                Text(String(format: "%.0f%%", tEnd * 100))
+                    .font(.system(size: 10).bold())
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 4).padding(.vertical, 1)
+                    .background(Color.black.opacity(0.6)).cornerRadius(3)
+                    .position(x: segEnd.x + 26, y: segEnd.y)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+
+    private func handleCircle(at point: CGPoint) -> some View {
+        Circle()
+            .fill(Color.green)
+            .overlay(Circle().stroke(Color.white, lineWidth: 2))
+            .frame(width: 16, height: 16)
+            .shadow(radius: 2)
+            .position(point)
+    }
+
+    /// Project a screen-space point onto the finish line and return its parametric t.
+    private func projectToLine(_ point: CGPoint, p1: CGPoint, p2: CGPoint) -> Double {
+        let dx = p2.x - p1.x, dy = p2.y - p1.y
+        let lenSq = dx * dx + dy * dy
+        guard lenSq > 0.0001 else { return 0 }
+        let t = ((point.x - p1.x) * dx + (point.y - p1.y) * dy) / lenSq
+        return max(0, min(1, Double(t)))
+    }
+
+    private func dragGesture(geoSize: CGSize, isStart: Bool) -> some Gesture {
+        DragGesture(minimumDistance: 0)
+            .onChanged { value in
+                let p1 = CGPoint(x: topX * geoSize.width, y: 0)
+                let p2 = CGPoint(x: bottomX * geoSize.width, y: geoSize.height)
+                let t = projectToLine(value.location, p1: p1, p2: p2)
+                if isStart {
+                    tStart = min(t, tEnd - 0.02)
+                } else {
+                    tEnd = max(t, tStart + 0.02)
+                }
+            }
+    }
+
+    private func lerp(_ a: CGPoint, _ b: CGPoint, t: Double) -> CGPoint {
+        CGPoint(x: a.x + (b.x - a.x) * CGFloat(t), y: a.y + (b.y - a.y) * CGFloat(t))
     }
 }

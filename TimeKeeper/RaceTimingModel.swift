@@ -57,6 +57,22 @@ enum LaneStatus: String, Codable {
     case dsq = "DSQ"  // Disqualified
 }
 
+// Free-form detection line for motion inspection (Phase A virtual finish line).
+// Endpoints are normalized 0..1 in view space, same convention as
+// PlayerViewModel.finishLineTopX/BottomX. Lane count is derived from
+// SessionData.teamNames.count at inspection time.
+struct DetectionLine: Codable, Equatable {
+    var p1: CGPoint               // (x, y) normalized 0..1
+    var p2: CGPoint               // (x, y) normalized 0..1
+    var roiHalfWidthPx: Int       // perpendicular band, pixels at native video resolution
+
+    init(p1: CGPoint, p2: CGPoint, roiHalfWidthPx: Int = 40) {
+        self.p1 = p1
+        self.p2 = p2
+        self.roiHalfWidthPx = roiHalfWidthPx
+    }
+}
+
 struct FinishEvent: Identifiable, Codable {
     let id: String
     var tRace: Double  // Time in race (from race start) - make mutable for editing
@@ -91,6 +107,7 @@ struct SessionData: Codable {
     var videoFilePath: String?  // Path to the recorded video file for review mode
     var videoDuration: Double?  // Duration of the video file in seconds
     var raceDuration: Double?  // Duration of the race in seconds (manually adjustable)
+    var detectionLine: DetectionLine?  // Free-form line for virtual-finish-line motion inspection (Phase A)
 
     init() {
         self.raceName = "Race"

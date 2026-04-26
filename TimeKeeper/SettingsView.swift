@@ -9,6 +9,7 @@ struct SettingsView: View {
     @State private var availableDevices: [AVCaptureDevice] = []
     @State private var selectedQuality: VideoQuality = VideoQuality.standardPresets[1] // Default to HD 1080p
     @State private var availableQualities: [VideoQuality] = []
+    @AppStorage("motionInspectionEnabled") private var motionInspectionEnabled: Bool = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -171,6 +172,24 @@ struct SettingsView: View {
 
                 Divider()
 
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Experimental")
+                        .font(.headline)
+
+                    Toggle(isOn: $motionInspectionEnabled) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Motion Inspection (Phase A)")
+                            Text("Adds a Motion Overlay toggle, ROI controls and a \"Run Sweep\" button in Review mode for frame-diff motion detection along the finish line. Off by default — accuracy depends on camera angle/height and lighting.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .toggleStyle(.switch)
+                }
+
+                Divider()
+
                 Text("Note: Changing the number of lanes will take effect when you create a new race.")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -199,7 +218,7 @@ struct SettingsView: View {
             }
         }
         .padding()
-        .frame(width: 500, height: 640)
+        .frame(width: 500, height: 760)
         .onAppear {
             // Load Free Races directory from UserDefaults
             if let path = UserDefaults.standard.string(forKey: "freeRacesDirectory") {

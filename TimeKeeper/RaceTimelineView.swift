@@ -102,6 +102,23 @@ struct RaceTimelineView: View {
             // Timing Adjustment Controls
             timingAdjustmentSection
 
+            // Motion-energy bar graph aligned to race-time space (above the timeline).
+            // Only renders if a sweep has been run.
+            if !playerViewModel.motionSweepRows.isEmpty {
+                MotionEnergyGraph(
+                    rows: playerViewModel.motionSweepRows,
+                    crossings: playerViewModel.motionCrossings,
+                    raceEndTime: raceEndTime,
+                    videoStartInRace: videoStartInRace,
+                    currentRaceTime: currentRaceTime,
+                    onSeekRaceTime: { raceTime in
+                        currentRaceTime = max(0, min(raceEndTime, raceTime))
+                        seekToRaceTime()
+                    }
+                )
+                .frame(height: 42)
+            }
+
             // Main Timeline Slider
             VStack(spacing: 10) {
                 // Timeline with markers
@@ -851,5 +868,98 @@ struct DraggableVideoBar: View {
                         onDragCompleted()
                     }
             )
+    }
+}
+// MARK: - Motion Energy Graph
+//
+// Bar-graph strip rendered above the main timeline. Each bar represents the motion
+// energy at one sampled frame from the most-recent sweep. Bars are positioned in
+// race-time space (so they align horizontally with the existing video ribbon and
+// finish markers). Detected crossings are marked with red triangles. Click anywhere
+// in the graph to seek to that race time.
+struct MotionEnergyGraph: View {
+    let rows: [SweepRow]
+    let crossings: [CrossingEvent]
+    let raceEndTime: Double
+    let videoStartInRace: Double
+    let currentRaceTime: Double
+    let onSeekRaceTime: (Double) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 8) {
+                Text("Motion Energy")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(.secondary)
+                Text("\(rows.count) samples · \(crossings.count) crossings")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                Spacer()
+            }
+
+            GeometryReader { geo in
+                let maxEnergy = max(1, rows.map { $0.motionEnergy }.max() ?? 1)
+                let plotHeight: CGFloat = 28
+                ZStack(alignment: .topLeading) {
+                    // Background
+                    RoundedRectangle(cornerRadius: 3)
+                        .fill(Color.gray.opacity(0.12))
+                        .frame(height: plotHeight)
+
+                    // Bars
+                    ForEach(0..<rows.count, id: \.self) { i in
+                        let row = rows[i]
+                        let raceT = row.time + videoStartInRace
+                        let xFrac = max(0, min(1, raceT / raceEndTime))
+                        let h = CGFloat(row.motionEnergy) / CGFloat(maxEnergy) * plotHeight
+                        Rectangle()
+                            .fill(barColor(energy: row.motionEnergy, max: maxEnergy))
+                            .frame(width: max(1, geo.size.width / CGFloat(max(1, rows.count)) - 0.5),
+                                   height: h)
+                            .position(x: CGFloat(xFrac) * geo.size.width,
+                                      y: plotHeight - h / 2)
+                    }
+
+                    // Crossing markers (red triangles below each peak)
+                    ForEach(0..<crossings.count, id: \.self) { i in
+                        let raceT = crossings[i].time + videoStartInRace
+                        let xFrac = max(0, min(1, raceT / raceEndTime))
+                        Path { p in
+                            p.move(to: CGPoint(x: 0, y: 0))
+                            p.addLine(to: CGPoint(x: -5, y: -7))
+                            p.addLine(to: CGPoint(x: 5, y: -7))
+                            p.closeSubpath()
+                        }
+                        .fill(Color.red)
+                        .frame(width: 10, height: 7)
+                        .position(x: CGFloat(xFrac) * geo.size.width,
+                                  y: plotHeight + 4)
+                    }
+
+                    // Current playhead
+                    let phFrac = max(0, min(1, currentRaceTime / raceEndTime))
+                    Rectangle()
+                        .fill(Color.accentColor)
+                        .frame(width: 1.5, height: plotHeight)
+                        .position(x: CGFloat(phFrac) * geo.size.width, y: plotHeight / 2)
+                }
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            let f = max(0, min(1, value.location.x / geo.size.width))
+                            onSeekRaceTime(Double(f) * raceEndTime)
+                        }
+                )
+            }
+        }
+    }
+
+    private func barColor(energy: Int, max: Int) -> Color {
+        let frac = Double(energy) / Double(Swift.max(1, max))
+        if frac < 0.05 { return Color.gray.opacity(0.4) }
+        if frac < 0.33 { return Color.cyan.opacity(0.85) }
+        if frac < 0.66 { return Color.yellow.opacity(0.9) }
+        return Color.red.opacity(0.95)
     }
 }

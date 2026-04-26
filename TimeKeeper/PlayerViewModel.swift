@@ -30,6 +30,17 @@ class PlayerViewModel: ObservableObject {
     @Published var finishLineTopX: Double = 0.5 // Normalized X position for top of line (0.0 to 1.0)
     @Published var finishLineBottomX: Double = 0.5 // Normalized X position for bottom of line (0.0 to 1.0)
 
+    // Virtual finish line — Phase A motion inspection (separate from photo-finish overlay above)
+    @Published var showDetectionLine: Bool = false
+    @Published var showMotionOverlay: Bool = false
+    @Published var detectionLine: DetectionLine?
+    @Published var motionThreshold: Int = 12  // 0..255 frame-diff threshold (debug slider)
+    /// Last completed sweep — bound to a graph in the Race Timeline.
+    @Published var motionSweepRows: [SweepRow] = []
+    @Published var motionCrossings: [CrossingEvent] = []
+    // Detection-line drag state
+    private var detectionLineDragStart: DetectionLine?
+
 
     private var timeObserver: Any?
     private var statusObserver: AnyCancellable?
@@ -241,4 +252,67 @@ class PlayerViewModel: ObservableObject {
     func endLineDrag() {
         isLineDragActive = false
     }
+
+    // MARK: - Virtual Finish Line (Phase A) — detection-line editing
+
+    func toggleDetectionLine() { showDetectionLine.toggle() }
+    func toggleMotionOverlay() { showMotionOverlay.toggle() }
+
+    /// Create or replace the detection line with the given normalized endpoints.
+    /// Coordinates are clamped to [0,1].
+    func setDetectionLine(p1: CGPoint, p2: CGPoint) {
+        let cp1 = CGPoint(x: clamp01(p1.x), y: clamp01(p1.y))
+        let cp2 = CGPoint(x: clamp01(p2.x), y: clamp01(p2.y))
+        if var existing = detectionLine {
+            existing.p1 = cp1
+            existing.p2 = cp2
+            detectionLine = existing
+        } else {
+            detectionLine = DetectionLine(p1: cp1, p2: cp2)
+        }
+    }
+
+    func clearDetectionLine() { detectionLine = nil }
+
+    /// Drag a single endpoint of the detection line. `which` is 1 for p1, 2 for p2.
+    func setDetectionLineEndpoint(_ which: Int, to point: CGPoint) {
+        guard var line = detectionLine else { return }
+        let clamped = CGPoint(x: clamp01(point.x), y: clamp01(point.y))
+        if which == 1 { line.p1 = clamped } else { line.p2 = clamped }
+        detectionLine = line
+    }
+
+    /// Begin a bodily drag of the detection line (records starting state for delta math).
+    /// Idempotent — safe to call repeatedly during a gesture; captures start state only once.
+    func beginDetectionLineDrag() {
+        if detectionLineDragStart == nil {
+            detectionLineDragStart = detectionLine
+        }
+    }
+
+    /// Apply a translation (in normalized coords) to both endpoints from the drag start.
+    func updateDetectionLineDrag(translationNormalized: CGSize) {
+        guard let start = detectionLineDragStart else { return }
+        let dx = translationNormalized.width
+        let dy = translationNormalized.height
+        // Clamp so the line stays inside the frame (slide together)
+        let p1 = CGPoint(x: start.p1.x + dx, y: start.p1.y + dy)
+        let p2 = CGPoint(x: start.p2.x + dx, y: start.p2.y + dy)
+        // If either endpoint would leave the frame, clip the translation by the worst-offending axis.
+        let minX = min(p1.x, p2.x), maxX = max(p1.x, p2.x)
+        let minY = min(p1.y, p2.y), maxY = max(p1.y, p2.y)
+        var adjDx = dx, adjDy = dy
+        if minX < 0 { adjDx -= minX }
+        if maxX > 1 { adjDx -= (maxX - 1) }
+        if minY < 0 { adjDy -= minY }
+        if maxY > 1 { adjDy -= (maxY - 1) }
+        var line = start
+        line.p1 = CGPoint(x: start.p1.x + adjDx, y: start.p1.y + adjDy)
+        line.p2 = CGPoint(x: start.p2.x + adjDx, y: start.p2.y + adjDy)
+        detectionLine = line
+    }
+
+    func endDetectionLineDrag() { detectionLineDragStart = nil }
+
+    private func clamp01(_ v: CGFloat) -> CGFloat { max(0, min(1, v)) }
 }
