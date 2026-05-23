@@ -203,26 +203,15 @@ class CaptureManager: NSObject, ObservableObject {
             let description = format.formatDescription
             let dimensions = CMVideoFormatDescriptionGetDimensions(description)
 
-            // Get all common frame rates supported by this format
-            let frameRateRanges = format.videoSupportedFrameRateRanges
-            let commonFrameRates: [Double] = [30.0, 60.0] // Common frame rates we want to support
-
-            for targetFrameRate in commonFrameRates {
-                // Check if this format supports the target frame rate
-                if let range = frameRateRanges.first(where: { range in
-                    targetFrameRate >= range.minFrameRate && targetFrameRate <= range.maxFrameRate
-                }) {
-                    let key = "\(dimensions.width)x\(dimensions.height)@\(Int(targetFrameRate))"
-
-                    // Only store this format if we don't have one yet, OR if this one is better
-                    // Better = maxFrameRate is closer to our target (prefer 60fps format for 60fps target)
-                    if let existingFormat = formatsByResolutionAndFrameRate[key],
-                       let existingRange = existingFormat.videoSupportedFrameRateRanges.first {
-                        // Prefer format whose max frame rate matches our target
-                        if abs(range.maxFrameRate - targetFrameRate) < abs(existingRange.maxFrameRate - targetFrameRate) {
-                            formatsByResolutionAndFrameRate[key] = format
-                        }
-                    } else {
+            // Enumerate whatever frame rates the device actually advertises for this format.
+            // Round to nearest integer so 29.97 → 30, 59.94 → 60, etc.
+            for range in format.videoSupportedFrameRateRanges {
+                let advertisedRates = Set([range.maxFrameRate, range.minFrameRate])
+                for rate in advertisedRates {
+                    let rounded = Int(rate.rounded())
+                    guard rounded > 0 else { continue }
+                    let key = "\(dimensions.width)x\(dimensions.height)@\(rounded)"
+                    if formatsByResolutionAndFrameRate[key] == nil {
                         formatsByResolutionAndFrameRate[key] = format
                     }
                 }

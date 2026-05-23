@@ -2,13 +2,12 @@ import SwiftUI
 import AVFoundation
 
 struct SettingsView: View {
+    @ObservedObject var captureManager: CaptureManager
     @State private var maxLanes: Int = AppConfig.shared.maxLanes
     @State private var freeRacesDirectory: URL?
     @State private var eventRacesDirectory: URL?
     @State private var selectedDeviceID: String?
     @State private var availableDevices: [AVCaptureDevice] = []
-    @State private var selectedQuality: VideoQuality = VideoQuality.standardPresets[1] // Default to HD 1080p
-    @State private var availableQualities: [VideoQuality] = []
     @AppStorage("motionInspectionEnabled") private var motionInspectionEnabled: Bool = false
     @Environment(\.dismiss) private var dismiss
 
@@ -140,18 +139,16 @@ struct SettingsView: View {
 
                         Spacer()
 
-                        Picker("", selection: $selectedQuality) {
-                            ForEach(availableQualities, id: \.self) { quality in
+                        Picker("", selection: $captureManager.selectedQuality) {
+                            ForEach(captureManager.availableQualities, id: \.self) { quality in
                                 Text(quality.uniqueID).tag(quality)
                             }
                         }
                         .labelsHidden()
                         .frame(width: 220)
-                        .onChange(of: selectedQuality) { newQuality in
-                            // Save selected quality to UserDefaults using unique identifier
-                            UserDefaults.standard.set(newQuality.uniqueID, forKey: "selectedVideoQuality")
-
-                            // Notify CaptureManager of quality change
+                        .disabled(captureManager.availableQualities.isEmpty)
+                        .onChange(of: captureManager.selectedQuality) { newQuality in
+                            // Persist + reconfigure session via existing CaptureManager handler
                             NotificationCenter.default.post(
                                 name: NSNotification.Name("VideoQualityChanged"),
                                 object: newQuality
@@ -159,8 +156,8 @@ struct SettingsView: View {
                         }
                     }
 
-                    if availableQualities.isEmpty {
-                        Text("No camera selected - quality options will appear after selecting a camera")
+                    if captureManager.availableQualities.isEmpty {
+                        Text("Available qualities will appear once a camera is selected and ready")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     } else {
@@ -241,27 +238,6 @@ struct SettingsView: View {
 
             // Load selected camera device from UserDefaults
             selectedDeviceID = UserDefaults.standard.string(forKey: "selectedCameraDevice")
-
-            // Load saved video quality
-            if let savedQualityID = UserDefaults.standard.string(forKey: "selectedVideoQuality"),
-               let quality = VideoQuality.standardPresets.first(where: { $0.uniqueID == savedQualityID }) {
-                selectedQuality = quality
-            }
-
-            // Listen for quality updates from CaptureManager
-            NotificationCenter.default.addObserver(
-                forName: NSNotification.Name("AvailableQualitiesUpdated"),
-                object: nil,
-                queue: .main
-            ) { notification in
-                if let qualities = notification.object as? [VideoQuality] {
-                    availableQualities = qualities
-                    // Update selected quality if it's not available
-                    if !qualities.contains(selectedQuality), let firstQuality = qualities.first {
-                        selectedQuality = firstQuality
-                    }
-                }
-            }
         }
     }
 
@@ -307,5 +283,5 @@ struct SettingsView: View {
 }
 
 #Preview {
-    SettingsView()
+    SettingsView(captureManager: CaptureManager())
 }

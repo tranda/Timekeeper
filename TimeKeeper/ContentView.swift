@@ -32,7 +32,7 @@ struct ContentView: View {
     /// All supporting code stays in place; UI is hidden when this is false.
     @AppStorage("motionInspectionEnabled") private var motionInspectionEnabled: Bool = false
 
-    @StateObject private var captureManager = CaptureManager()
+    @ObservedObject var captureManager: CaptureManager
     @StateObject private var playerViewModel = PlayerViewModel()
     @StateObject private var timingModel = RaceTimingModel()
     @State private var outputFolderURL: URL?

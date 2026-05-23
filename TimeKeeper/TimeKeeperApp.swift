@@ -10,10 +10,11 @@ struct TimeKeeperApp: App {
     @State private var racePlanResultMessage = ""
     @State private var racePlanResultIsSuccess = false
     @StateObject private var racePlanService = RacePlanService.shared
+    @StateObject private var captureManager = CaptureManager()
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(captureManager: captureManager)
                 .frame(minWidth: 920, minHeight: 620)
                 .onAppear {
                     // Maximize window on startup
@@ -67,7 +68,7 @@ struct TimeKeeperApp: App {
                     Text(racePlanResultMessage)
                 }
                 .sheet(isPresented: $showingSettings) {
-                    SettingsView()
+                    SettingsView(captureManager: captureManager)
                 }
         }
         .windowResizability(.contentSize)
