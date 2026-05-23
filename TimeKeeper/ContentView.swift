@@ -25,6 +25,14 @@ class AVPlayerView_Internal: AVKit.AVPlayerView {
         super.awakeFromNib()
         self.controlsStyle = .none
     }
+
+    // Prevent AVKit from grabbing keyboard focus.
+    // AVPlayerView has built-in arrow-key bindings for frame-stepping; once it becomes
+    // first responder it consumes left/right via paths that bypass our local NSEvent
+    // monitor, which is why timeline arrow navigation stopped responding after the
+    // first press.
+    override var acceptsFirstResponder: Bool { false }
+    override func becomeFirstResponder() -> Bool { false }
 }
 
 struct ContentView: View {
@@ -709,6 +717,12 @@ struct ContentView: View {
         let modifierFlags = event.modifierFlags
         let characters = event.charactersIgnoringModifiers?.lowercased() ?? ""
 
+        // Diagnostic: log every key press the monitor sees, with first-responder class.
+        if keyCode == 123 || keyCode == 124 {
+            let frClass = (NSApp.keyWindow?.firstResponder).map { String(describing: type(of: $0)) } ?? "nil"
+            print("⌨️ ArrowKey monitor: code=\(keyCode) firstResponder=\(frClass) isTextFieldEditing=\(isTextFieldEditing())")
+        }
+
         // Handle special keys first
         switch keyCode {
         case 49: // SPACE
@@ -769,6 +783,22 @@ struct ContentView: View {
         case "f":
             handlePhotoFinishShortcut()
             return nil
+
+        case "[":
+            // Alternate timeline-back shortcut (in case arrow keys are intercepted)
+            if !isTextFieldEditing() {
+                handleTimelineNavigation(direction: .left, modifiers: modifierFlags)
+                return nil
+            }
+            return event
+
+        case "]":
+            // Alternate timeline-forward shortcut
+            if !isTextFieldEditing() {
+                handleTimelineNavigation(direction: .right, modifiers: modifierFlags)
+                return nil
+            }
+            return event
 
         case "e" where modifierFlags.contains(.command):
             handleExportShortcut()
@@ -890,6 +920,20 @@ struct ContentView: View {
         case start, end
     }
 
+    /// Returns the current video's frame duration (seconds per frame).
+    /// Falls back to 1/30s if the rate cannot be determined.
+    private func videoFrameDuration() -> Double {
+        guard let asset = playerViewModel.player.currentItem?.asset else {
+            return 1.0 / 30.0
+        }
+        let tracks = asset.tracks(withMediaType: .video)
+        guard let track = tracks.first else {
+            return 1.0 / 30.0
+        }
+        let fps = Double(track.nominalFrameRate)
+        return fps > 0 ? 1.0 / fps : 1.0 / 30.0
+    }
+
     private func handleTimelineNavigation(direction: TimelineDirection, modifiers: NSEvent.ModifierFlags) {
         // Only work when race is completed (not active, has started, and has been stopped)
         guard !timingModel.isRaceActive,
@@ -898,18 +942,9 @@ struct ContentView: View {
               playerViewModel.player.currentItem != nil else { return }
 
         let currentTime = playerViewModel.currentTime
-        var newTime: Double
-
-        if modifiers.contains(.shift) {
-            // Fine adjustment: ±1ms
-            newTime = direction == .left ? currentTime - 0.001 : currentTime + 0.001
-        } else if modifiers.contains(.command) {
-            // Coarse adjustment: ±100ms
-            newTime = direction == .left ? currentTime - 0.1 : currentTime + 0.1
-        } else {
-            // Normal adjustment: ±10ms
-            newTime = direction == .left ? currentTime - 0.01 : currentTime + 0.01
-        }
+        let frameDuration = videoFrameDuration()
+        // Single step = 1 frame, regardless of modifiers.
+        var newTime = direction == .left ? currentTime - frameDuration : currentTime + frameDuration
 
         // Clamp to video bounds
         if let duration = playerViewModel.player.currentItem?.duration,
@@ -920,10 +955,24 @@ struct ContentView: View {
             newTime = max(0, newTime)
         }
 
-        // Seek to new time
-        let seekTime = CMTime(seconds: newTime, preferredTimescale: 1000)
-        playerViewModel.player.seek(to: seekTime)
+        // Frame-accurate seek (zero tolerance) so frame stepping lands on real frames,
+        // not interpolated keyframe approximations.
+        let seekTime = CMTime(seconds: newTime, preferredTimescale: 6000)
+        playerViewModel.player.seek(to: seekTime, toleranceBefore: .zero, toleranceAfter: .zero)
         playerViewModel.currentTime = newTime
+
+        // Defensive: AVPlayerView's underlying NSView may grab first-responder after
+        // a seek and start swallowing arrow keys for its own frame-step behavior.
+        // Clear first responder so subsequent arrow events reach our local monitor cleanly.
+        DispatchQueue.main.async {
+            if let window = NSApp.keyWindow {
+                let fr = window.firstResponder
+                // Only reset if a non-textfield view holds focus — don't steal from text editing.
+                if !(fr is NSTextField) && !(fr is NSTextView) {
+                    window.makeFirstResponder(nil)
+                }
+            }
+        }
     }
 
     private func handleTimelineJump(_ jump: TimelineJump) {

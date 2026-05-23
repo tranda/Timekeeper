@@ -175,9 +175,7 @@ struct TimeKeeperApp: App {
         After Race (Video Review):
         • M - Open lane selection dialog
         • F - Toggle photo finish overlay
-        • ←/→ - Navigate timeline ±10ms
-        • ⇧+←/→ - Navigate ±1ms (fine)
-        • ⌘+←/→ - Navigate ±100ms (coarse)
+        • ←/→ or [/] - Step timeline ±1 frame
         • ⌘+E - Export current frame
         • ⌘+S - Save session
         • ⌘++ - Zoom in video
