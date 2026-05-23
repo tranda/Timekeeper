@@ -170,6 +170,40 @@ struct SettingsView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 8) {
+                    Text("Exposure (UVC)")
+                        .font(.headline)
+
+                    HStack {
+                        Text("Shutter Speed:")
+
+                        Spacer()
+
+                        Picker("", selection: Binding(
+                            get: { captureManager.shutterSpeed },
+                            set: { captureManager.saveShutterSpeed($0) }
+                        )) {
+                            ForEach(ShutterSpeed.presets, id: \.self) { shutter in
+                                Text(shutter.displayName).tag(shutter)
+                            }
+                        }
+                        .labelsHidden()
+                        .frame(width: 220)
+                    }
+
+                    if captureManager.uvcExposureAvailable {
+                        Text("Faster shutter = less motion blur at the finish line. Needs more light.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("UVC controls not available for this camera (or not yet applied — try selecting a shutter value)")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                    }
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
                     Text("Experimental")
                         .font(.headline)
 
@@ -215,7 +249,7 @@ struct SettingsView: View {
             }
         }
         .padding()
-        .frame(width: 500, height: 760)
+        .frame(width: 500, height: 860)
         .onAppear {
             // Load Free Races directory from UserDefaults
             if let path = UserDefaults.standard.string(forKey: "freeRacesDirectory") {

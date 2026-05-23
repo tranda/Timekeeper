@@ -22,6 +22,7 @@
 		B5A0C2012B00000000000010 /* MotionInspector.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2002B0000000000000F /* MotionInspector.swift */; };
 		B5A0C2032B00000000000012 /* DetectionLineOverlayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2022B00000000000011 /* DetectionLineOverlayView.swift */; };
 		B5A0C2052B00000000000014 /* MotionSweepSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2042B00000000000013 /* MotionSweepSheet.swift */; };
+		B5A0C2072B00000000000016 /* UVCExposureControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2062B00000000000015 /* UVCExposureControl.swift */; };
 		B5A0C2092B00000000000018 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2082B00000000000017 /* AppLog.swift */; };
 		B5A0C20B2B0000000000001A /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C20A2B00000000000019 /* LogView.swift */; };
 /* End PBXBuildFile section */
@@ -43,6 +44,7 @@
 		B5A0C2002B0000000000000F /* MotionInspector.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionInspector.swift; sourceTree = "<group>"; };
 		B5A0C2022B00000000000011 /* DetectionLineOverlayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectionLineOverlayView.swift; sourceTree = "<group>"; };
 		B5A0C2042B00000000000013 /* MotionSweepSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MotionSweepSheet.swift; sourceTree = "<group>"; };
+		B5A0C2062B00000000000015 /* UVCExposureControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UVCExposureControl.swift; sourceTree = "<group>"; };
 		B5A0C2082B00000000000017 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		B5A0C20A2B00000000000019 /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
 		B5A0C10E2B00000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -94,6 +96,7 @@
 				B5A0C2002B0000000000000F /* MotionInspector.swift */,
 				B5A0C2022B00000000000011 /* DetectionLineOverlayView.swift */,
 				B5A0C2042B00000000000013 /* MotionSweepSheet.swift */,
+				B5A0C2062B00000000000015 /* UVCExposureControl.swift */,
 				B5A0C2082B00000000000017 /* AppLog.swift */,
 				B5A0C20A2B00000000000019 /* LogView.swift */,
 				B5A0C10E2B00000000000006 /* Info.plist */,
@@ -185,6 +188,7 @@
 				B5A0C2012B00000000000010 /* MotionInspector.swift in Sources */,
 				B5A0C2032B00000000000012 /* DetectionLineOverlayView.swift in Sources */,
 				B5A0C2052B00000000000014 /* MotionSweepSheet.swift in Sources */,
+				B5A0C2072B00000000000016 /* UVCExposureControl.swift in Sources */,
 				B5A0C2092B00000000000018 /* AppLog.swift in Sources */,
 				B5A0C20B2B0000000000001A /* LogView.swift in Sources */,
 			);

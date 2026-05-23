@@ -77,11 +77,33 @@ struct VideoQuality: Equatable, Hashable {
     }
 }
 
+/// User-facing exposure / shutter-speed preset.
+/// `seconds == nil` means auto exposure.
+struct ShutterSpeed: Hashable {
+    let displayName: String
+    let seconds: Double?  // nil = Auto
+
+    static let auto = ShutterSpeed(displayName: "Auto", seconds: nil)
+    static let presets: [ShutterSpeed] = [
+        .auto,
+        ShutterSpeed(displayName: "1/60",   seconds: 1.0 / 60),
+        ShutterSpeed(displayName: "1/125",  seconds: 1.0 / 125),
+        ShutterSpeed(displayName: "1/250",  seconds: 1.0 / 250),
+        ShutterSpeed(displayName: "1/500",  seconds: 1.0 / 500),
+        ShutterSpeed(displayName: "1/1000", seconds: 1.0 / 1000),
+        ShutterSpeed(displayName: "1/2000", seconds: 1.0 / 2000),
+        ShutterSpeed(displayName: "1/4000", seconds: 1.0 / 4000)
+    ]
+}
+
 class CaptureManager: NSObject, ObservableObject {
     @Published var availableDevices: [AVCaptureDevice] = []
     @Published var selectedDevice: AVCaptureDevice?
     @Published var availableQualities: [VideoQuality] = []
     @Published var selectedQuality: VideoQuality = VideoQuality.standardPresets[1] // Default to HD 1080p
+    @Published var shutterSpeed: ShutterSpeed = .auto
+    /// True if the most recent UVC apply succeeded.
+    @Published var uvcExposureAvailable: Bool = false
     @Published var isRecording = false
     @Published var outputDirectory: URL? {
         didSet {
@@ -134,6 +156,12 @@ class CaptureManager: NSObject, ObservableObject {
         loadSavedCameraDevice()
         // Video quality will be loaded when device formats are detected
 
+        // Load saved shutter speed preset
+        if let savedName = UserDefaults.standard.string(forKey: "shutterSpeedDisplayName"),
+           let preset = ShutterSpeed.presets.first(where: { $0.displayName == savedName }) {
+            shutterSpeed = preset
+        }
+
         // Listen for camera switch notifications from Settings
         NotificationCenter.default.addObserver(
             self,
@@ -159,6 +187,57 @@ class CaptureManager: NSObject, ObservableObject {
         }
     }
 
+
+    /// Open USB device, apply the current shutter speed, then close.
+    /// Open/send/close per call so we never hold the USB device open — that interfered
+    /// with AVFoundation's session and broke video streaming.
+    func applyExposureSettings(for device: AVCaptureDevice) {
+        let productName = device.localizedName
+        let lower = productName.lowercased()
+        let isApple = lower.contains("facetime")
+            || lower.contains("iphone")
+            || lower.contains("ipad")
+            || lower.contains("continuity")
+        guard !isApple else {
+            DispatchQueue.main.async { [weak self] in
+                self?.uvcExposureAvailable = false
+            }
+            return
+        }
+
+        let shutter = self.shutterSpeed
+        // Do the IOKit work off the main thread; control transfers can block briefly.
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            guard let self = self else { return }
+            let ok: Bool
+            if let control = UVCExposureControl(matchingProductName: productName) {
+                if let seconds = shutter.seconds {
+                    ok = control.setManualShutter(seconds: seconds)
+                    if ok { print("📷 UVC: applied manual shutter \(shutter.displayName) (\(seconds * 1000) ms)") }
+                } else {
+                    ok = control.setAutoExposure()
+                    if ok { print("📷 UVC: applied auto exposure") }
+                }
+                // Control is released here, which closes the USB device.
+            } else {
+                ok = false
+                print("⚠️ UVC manual exposure not available for '\(productName)'")
+            }
+
+            DispatchQueue.main.async {
+                self.uvcExposureAvailable = ok
+            }
+        }
+    }
+
+    /// Persist and apply a new shutter speed selection.
+    func saveShutterSpeed(_ shutter: ShutterSpeed) {
+        shutterSpeed = shutter
+        UserDefaults.standard.set(shutter.displayName, forKey: "shutterSpeedDisplayName")
+        if let device = selectedDevice {
+            applyExposureSettings(for: device)
+        }
+    }
 
     func saveVideoQuality(_ quality: VideoQuality) {
         selectedQuality = quality
@@ -398,6 +477,8 @@ class CaptureManager: NSObject, ObservableObject {
                     print("Successfully configured session for: \(device.localizedName)")
                     // Detect available qualities for this device
                     self?.detectAvailableQualities(for: device)
+                    // Apply current shutter / exposure settings via UVC
+                    self?.applyExposureSettings(for: device)
                     self?.startSessionIfNeeded()
                 } else {
                     print("Failed to configure session for: \(device.localizedName)")
