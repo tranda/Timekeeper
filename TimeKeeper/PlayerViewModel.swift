@@ -45,12 +45,78 @@ class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var statusObserver: AnyCancellable?
     private var rateObserver: AnyCancellable?
+    private var finishLineCancellables = Set<AnyCancellable>()
+    private var sessionFinishLineObserver: AnyCancellable?
+    /// Set while we're syncing the finish line FROM session data into PlayerViewModel,
+    /// to suppress the reverse write that would otherwise overwrite the session value.
+    private var isApplyingSessionFinishLine = false
 
-    var timingModel: RaceTimingModel?
+    var timingModel: RaceTimingModel? {
+        didSet {
+            observeSessionFinishLine()
+        }
+    }
 
     init() {
         self.player = AVPlayer()
         setupObservers()
+        loadSavedFinishLine()
+        setupFinishLinePersistence()
+    }
+
+    // Persist the photo finish overlay position so it survives across sessions / app launches.
+    // Most users set the line once (matching camera install) and want it to stay put.
+    private func loadSavedFinishLine() {
+        if let top = UserDefaults.standard.object(forKey: "finishLineTopX") as? Double {
+            finishLineTopX = max(0.0, min(1.0, top))
+        }
+        if let bottom = UserDefaults.standard.object(forKey: "finishLineBottomX") as? Double {
+            finishLineBottomX = max(0.0, min(1.0, bottom))
+        }
+    }
+
+    private func setupFinishLinePersistence() {
+        // Debounce so we don't hammer UserDefaults / sessionData during a drag.
+        $finishLineTopX
+            .dropFirst()
+            .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
+            .sink { [weak self] value in
+                guard let self = self, !self.isApplyingSessionFinishLine else { return }
+                UserDefaults.standard.set(value, forKey: "finishLineTopX")
+                self.timingModel?.sessionData?.finishLineTopX = value
+            }
+            .store(in: &finishLineCancellables)
+
+        $finishLineBottomX
+            .dropFirst()
+            .debounce(for: .milliseconds(200), scheduler: RunLoop.main)
+            .sink { [weak self] value in
+                guard let self = self, !self.isApplyingSessionFinishLine else { return }
+                UserDefaults.standard.set(value, forKey: "finishLineBottomX")
+                self.timingModel?.sessionData?.finishLineBottomX = value
+            }
+            .store(in: &finishLineCancellables)
+    }
+
+    /// When a session is loaded into the timing model, mirror its finish-line position
+    /// into PlayerViewModel. If the session has no values, leave whatever is currently set
+    /// (which comes from UserDefaults as the per-app default).
+    private func observeSessionFinishLine() {
+        sessionFinishLineObserver?.cancel()
+        guard let model = timingModel else { return }
+        sessionFinishLineObserver = model.$sessionData
+            .compactMap { $0 }
+            .sink { [weak self] session in
+                guard let self = self else { return }
+                self.isApplyingSessionFinishLine = true
+                if let top = session.finishLineTopX {
+                    self.finishLineTopX = max(0.0, min(1.0, top))
+                }
+                if let bottom = session.finishLineBottomX {
+                    self.finishLineBottomX = max(0.0, min(1.0, bottom))
+                }
+                self.isApplyingSessionFinishLine = false
+            }
     }
 
     deinit {

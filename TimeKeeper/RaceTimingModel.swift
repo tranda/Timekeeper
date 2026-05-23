@@ -108,6 +108,8 @@ struct SessionData: Codable {
     var videoDuration: Double?  // Duration of the video file in seconds
     var raceDuration: Double?  // Duration of the race in seconds (manually adjustable)
     var detectionLine: DetectionLine?  // Free-form line for virtual-finish-line motion inspection (Phase A)
+    var finishLineTopX: Double?     // Normalized X (0..1) for top endpoint of the photo finish overlay
+    var finishLineBottomX: Double?  // Normalized X (0..1) for bottom endpoint of the photo finish overlay
 
     init() {
         self.raceName = "Race"
