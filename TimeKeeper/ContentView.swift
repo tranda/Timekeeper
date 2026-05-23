@@ -848,7 +848,9 @@ struct ContentView: View {
                     self.markTimelineDataAsUnsaved()
                 }
             } else {
-                captureManager.startRecording(to: captureManager.outputDirectory) { success in
+                // Pass nil so CaptureManager routes to the Event/Free Races folder
+                // based on session type (so video lands alongside JSON and images).
+                captureManager.startRecording(to: nil) { success in
                     if success {
                         print("Started video recording via shortcut")
                         // Mark as unsaved when recording starts

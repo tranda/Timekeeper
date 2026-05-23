@@ -842,41 +842,49 @@ struct RaceTimingPanel: View {
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
                 }
+
+                if let tertiaryMessage = hintData.tertiaryMessage {
+                    Text(tertiaryMessage)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 4)
+                }
             }
         }
-        .frame(maxWidth: 140)
+        .frame(maxWidth: 160)
         .padding(.vertical, 10)
         .transition(.opacity.combined(with: .scale))
         .animation(.easeInOut(duration: 0.3), value: hintData.primaryMessage)
     }
 
-    private func getCenteredHint() -> (primaryMessage: String, secondaryMessage: String?, icon: String, color: Color) {
+    private func getCenteredHint() -> (primaryMessage: String, secondaryMessage: String?, tertiaryMessage: String?, icon: String, color: Color) {
         // Review mode
         if isReviewMode {
-            return ("REVIEW MODE", "M to mark", "film.fill", Color.purple)
+            return ("REVIEW MODE", "M to mark", nil, "film.fill", Color.purple)
         }
 
         // Race completed (not active, has started)
         if !timingModel.isRaceActive && timingModel.raceStartTime != nil {
-            return ("RACE COMPLETE", "Review mode", "checkmark.circle.fill", Color.green)
+            return ("RACE COMPLETE", "Review mode", nil, "checkmark.circle.fill", Color.green)
         }
 
         // Race active
         if timingModel.isRaceActive {
             if captureManager.isRecording {
-                return ("⎵ SPACE", "stop recording", "record.circle.fill", Color.red)
+                return ("⎵ SPACE", "stop recording", "⎋ ESC — stop race", "record.circle.fill", Color.red)
             } else {
-                return ("⎵ SPACE", "record video", "video.badge.plus", Color.orange)
+                return ("⎵ SPACE", "record video", "⎋ ESC — stop race", "video.badge.plus", Color.orange)
             }
         }
 
         // Race initialized but not started
         if timingModel.isRaceInitialized && timingModel.raceStartTime == nil {
-            return ("⏎ ENTER", "start race", "play.circle.fill", Color.blue)
+            return ("⏎ ENTER", "start race", nil, "play.circle.fill", Color.blue)
         }
 
         // No race initialized
-        return ("Click NEW RACE", "to begin", "flag.checkered", Color.gray)
+        return ("Click NEW RACE", "to begin", nil, "flag.checkered", Color.gray)
     }
 
     @ViewBuilder
@@ -1460,8 +1468,9 @@ struct RaceTimingPanel: View {
             }
         } else {
             print("🟡 Starting recording...")
-            // Use the output directory (defaults to Desktop)
-            captureManager.startRecording(to: captureManager.outputDirectory) { success in
+            // Pass nil so CaptureManager picks Event/Free Races folder based on session type
+            // (matches where the JSON session and exported images go).
+            captureManager.startRecording(to: nil) { success in
                 if success {
                     print("🟡 Recording started successfully, calling markAsUnsaved()")
                     // Mark as unsaved when recording starts
