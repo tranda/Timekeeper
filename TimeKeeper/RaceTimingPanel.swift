@@ -282,7 +282,7 @@ struct RaceTimingPanel: View {
                                 .font(.system(size: 16, weight: .medium))
                                 .tag(0)
                             ForEach(racePlan.races) { race in
-                                Text("\(race.raceNumber) - \(formatRaceTitle(race.title)) (\(race.stage))")
+                                Text(raceDropdownLabel(for: race))
                                     .font(.system(size: 16, weight: .medium))
                                     .tag(race.id)
                             }
@@ -487,6 +487,49 @@ struct RaceTimingPanel: View {
 
             // Race Results Table
             VStack(alignment: .leading, spacing: 6) {
+                // Race plan details — shown when an API-loaded race is selected
+                if let race = racePlanService.selectedRace {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Race \(race.raceNumber) — \(race.disciplineInfo)")
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+
+                        HStack(spacing: 6) {
+                            if !race.stage.isEmpty {
+                                Text(race.stage)
+                            }
+                            if !race.boatSize.isEmpty {
+                                Text("•")
+                                Text(race.boatSize)
+                            }
+                            if let competition = race.competition, !competition.isEmpty {
+                                Text("•")
+                                Text(competition)
+                            }
+                            if !race.raceTime.isEmpty {
+                                Text("•")
+                                Text(race.raceTime)
+                            }
+                            if !race.status.isEmpty {
+                                Text("•")
+                                Text(race.status)
+                            }
+                            if let competition = race.competition, !competition.isEmpty {
+                                Text("•")
+                                Text(competition)
+                                    .fontWeight(.medium)
+                            }
+                        }
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(Color.blue.opacity(0.08))
+                    .cornerRadius(6)
+                }
+
                 HStack {
                     Text("Race Results")
                         .font(.headline)
@@ -1402,6 +1445,16 @@ struct RaceTimingPanel: View {
     }
 
     // Helper function to format race titles by adding spaces between words
+    /// Label shown for each entry in the Race picker.
+    /// Format: "<num> - <title> (<stage>) — <competition>" with competition omitted when nil/empty.
+    private func raceDropdownLabel(for race: Race) -> String {
+        let base = "\(race.raceNumber) - \(formatRaceTitle(race.title)) (\(race.stage))"
+        if let competition = race.competition, !competition.isEmpty {
+            return "\(base) — \(competition)"
+        }
+        return base
+    }
+
     private func formatRaceTitle(_ title: String) -> String {
         return title
             .replacingOccurrences(of: "Small", with: "Small ")

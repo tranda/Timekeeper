@@ -23,6 +23,7 @@ struct Race {
     let disciplineId: Int
     let disciplineInfo: String
     let boatSize: String
+    let competition: String?
     let raceTime: String
     let status: String
     let lanes: [Lane]
@@ -441,6 +442,7 @@ class RacePlanService: ObservableObject {
         let updatedRace = Race(id: updatedRaces[raceIndex].id, raceNumber: updatedRaces[raceIndex].raceNumber,
                               stage: updatedRaces[raceIndex].stage, disciplineId: updatedRaces[raceIndex].disciplineId,
                               disciplineInfo: updatedRaces[raceIndex].disciplineInfo, boatSize: updatedRaces[raceIndex].boatSize,
+                              competition: updatedRaces[raceIndex].competition,
                               raceTime: updatedRaces[raceIndex].raceTime,
                               status: finishEvents.isEmpty ? updatedRaces[raceIndex].status : "FINISHED",
                               lanes: updatedLanes, title: updatedRaces[raceIndex].title,
@@ -703,7 +705,7 @@ extension RacePlan: Codable, Identifiable {
 
 extension Race: Codable, Identifiable {
     enum CodingKeys: String, CodingKey {
-        case id, raceNumber, stage, disciplineId, disciplineInfo, boatSize, raceTime, status, lanes, title, createdAt, updatedAt
+        case id, raceNumber, stage, disciplineId, disciplineInfo, boatSize, competition, raceTime, status, lanes, title, createdAt, updatedAt
     }
 }
 
