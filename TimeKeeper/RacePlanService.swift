@@ -309,6 +309,11 @@ class RacePlanService: ObservableObject {
                         if httpResponse.statusCode == 200 {
                             // Update internal race data after successful submission
                             self?.updateInternalRaceData(sessionData: sessionData, finishEvents: finishEvents)
+                            // The backend auto-seeds the next stage(s) (repechages/
+                            // finals) when this race completes a round. Re-fetch the
+                            // plan so those new crew assignments appear without a
+                            // manual refresh. @Published updates must run on main.
+                            DispatchQueue.main.async { self?.fetchRacePlans() }
                             completion(.success("Race results submitted successfully"))
                         } else {
                             let errorMsg = "Server returned status code: \(httpResponse.statusCode)"
