@@ -505,6 +505,7 @@ struct RaceTimingPanel: View {
                             if let competition = race.competition, !competition.isEmpty {
                                 Text("•")
                                 Text(competition)
+                                    .fontWeight(.medium)
                             }
                             if !race.raceTime.isEmpty {
                                 Text("•")
@@ -513,11 +514,6 @@ struct RaceTimingPanel: View {
                             if !race.status.isEmpty {
                                 Text("•")
                                 Text(race.status)
-                            }
-                            if let competition = race.competition, !competition.isEmpty {
-                                Text("•")
-                                Text(competition)
-                                    .fontWeight(.medium)
                             }
                         }
                         .font(.caption)
@@ -987,6 +983,13 @@ struct RaceTimingPanel: View {
 
     @ViewBuilder
     private func statusMenu(for teamName: String, finishEvent: FinishEvent?) -> some View {
+        // No team assigned to this lane → don't show a status (and don't pretend a
+        // non-existent crew is "Registered"). Render a dash placeholder instead.
+        if teamName.trimmingCharacters(in: .whitespaces).isEmpty {
+            Text("—")
+                .foregroundColor(.secondary)
+                .frame(width: 110, alignment: .leading)
+        } else {
         Menu {
             Button("Registered") {
                 timingModel.recordLaneStatus(teamName, status: .registered)
@@ -1038,6 +1041,7 @@ struct RaceTimingPanel: View {
         }
         .menuStyle(.borderlessButton)
         .frame(width: 120, alignment: .leading)
+        }
     }
 
     @ViewBuilder
