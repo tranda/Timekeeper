@@ -36,6 +36,7 @@ struct RaceTimingPanel: View {
     @State private var resultsAlertTitle = ""
     @State private var resultsAlertMessage = ""
     @State private var resultsAlertIsSuccess = false
+    @State private var showRefreshConfirm = false
 
     // Manual timing setup for sessions without wallclock data
     @State private var manualRaceDuration = ""
@@ -307,6 +308,25 @@ struct RaceTimingPanel: View {
                         }
                         .buttonStyle(.plain)
                         .help(isReviewMode ? "Switch to live race mode" : "Switch to review mode for editing times")
+
+                        Button(action: {
+                            showRefreshConfirm = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text("REFRESH")
+                                    .font(.system(size: 12, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(height: 35)
+                            .padding(.horizontal, 10)
+                            .background(Color.blue)
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(timingModel.isRaceActive)
+                        .help("Discard the local recorded result for this race and reload fresh data (lanes/seeds/results) from the server")
 
                         if isReviewMode {
                             Button(action: {
@@ -731,6 +751,12 @@ struct RaceTimingPanel: View {
                     racePlanService.shouldRefreshRaceData = false
                 }
             }
+        }
+        .alert("Refresh from server?", isPresented: $showRefreshConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Refresh", role: .destructive) { resetCurrentRaceFromServer() }
+        } message: {
+            Text("This discards the locally recorded result for this race and reloads fresh data (lanes, seeds, results) from the server. Recorded times for this race that haven't been sent will be lost.")
         }
         .sheet(isPresented: $showNewRaceSheet) {
             VStack(spacing: 20) {
@@ -1313,6 +1339,27 @@ struct RaceTimingPanel: View {
         // Session will be saved manually via Save button
 
         print("📺 Selected video loaded successfully for review mode")
+    }
+
+    /// Discard the locally recorded session for the currently selected race and
+    /// reload fresh data from the server (lanes, seeds, results). Clears stale
+    /// cached results/seeds after the backend has been updated.
+    private func resetCurrentRaceFromServer() {
+        guard let selectedRace = racePlanService.selectedRace else { return }
+        let raceName = "\(selectedRace.raceNumber) - \(selectedRace.title)"
+        let sessionURL = AppConfig.shared.getEventRacesDirectory()
+            .appendingPathComponent("\(raceName).json")
+        try? FileManager.default.removeItem(at: sessionURL)
+        isReviewMode = false
+        timingModel.resetRace()
+        // Re-fetch the plan; the $shouldRefreshRaceData hook reloads this race
+        // from fresh server data once it arrives. Fall back to a local reload
+        // from the cached plan when there's no API key configured.
+        if racePlanService.hasAPIKey() {
+            racePlanService.fetchRacePlans()
+        } else {
+            loadSelectedRaceData()
+        }
     }
 
     private func loadSelectedRaceData() {
