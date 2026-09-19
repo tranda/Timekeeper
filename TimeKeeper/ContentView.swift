@@ -66,6 +66,16 @@ struct ContentView: View {
     @State private var motionTStart: Double = 0.0   // analysis sub-segment start (along line)
     @State private var motionTEnd: Double = 1.0     // analysis sub-segment end (along line)
 
+    // Captured finishLineTopX / finishLineBottomX at the moment a handle drag
+    // starts. Drag deltas (value.translation.width) get added to this baseline
+    // so the line follows the pointer 1:1 from the moment it's grabbed —
+    // without the apparent "snap" the absolute-location code used to produce
+    // (value.location for a 12pt handle is in the handle's local space, so
+    // dividing by video width turned the cursor's offset-within-handle into
+    // a near-zero normalized X, and the handle jumped on first touch).
+    @State private var topHandleDragStartX: Double? = nil
+    @State private var bottomHandleDragStartX: Double? = nil
+
     var body: some View {
         HStack(spacing: 0) {
             // Left side - Controls
@@ -266,7 +276,9 @@ struct ContentView: View {
                                                                 }
                                                                 .stroke(Color.yellow, lineWidth: 1)
                                                                 .gesture(
-                                                                    DragGesture()
+                                                                    // minimumDistance: 0 → fine-grained drag from the first pixel,
+                                                                    // no 10pt dead-zone-then-jump that feels like snapping.
+                                                                    DragGesture(minimumDistance: 0)
                                                                         .onChanged { value in
                                                                             let startX = value.startLocation.x / videoGeometry.size.width
                                                                             let currentX = value.location.x / videoGeometry.size.width
@@ -286,10 +298,20 @@ struct ContentView: View {
                                                                         y: 0 // Top edge
                                                                     )
                                                                     .gesture(
-                                                                        DragGesture()
+                                                                        DragGesture(minimumDistance: 0)
                                                                             .onChanged { value in
-                                                                                let newX = value.location.x / videoGeometry.size.width
-                                                                                playerViewModel.setFinishLineTopX(newX)
+                                                                                if topHandleDragStartX == nil {
+                                                                                    topHandleDragStartX = playerViewModel.finishLineTopX
+                                                                                    // Flag drag-in-progress so the session observer doesn't
+                                                                                    // overwrite our value mid-drag (see PlayerViewModel.observeSessionFinishLine).
+                                                                                    playerViewModel.startLineDrag()
+                                                                                }
+                                                                                let dx = Double(value.translation.width) / Double(videoGeometry.size.width)
+                                                                                playerViewModel.setFinishLineTopX(topHandleDragStartX! + dx)
+                                                                            }
+                                                                            .onEnded { _ in
+                                                                                topHandleDragStartX = nil
+                                                                                playerViewModel.endLineDrag()
                                                                             }
                                                                     )
 
@@ -302,10 +324,18 @@ struct ContentView: View {
                                                                         y: videoGeometry.size.height // Bottom edge
                                                                     )
                                                                     .gesture(
-                                                                        DragGesture()
+                                                                        DragGesture(minimumDistance: 0)
                                                                             .onChanged { value in
-                                                                                let newX = value.location.x / videoGeometry.size.width
-                                                                                playerViewModel.setFinishLineBottomX(newX)
+                                                                                if bottomHandleDragStartX == nil {
+                                                                                    bottomHandleDragStartX = playerViewModel.finishLineBottomX
+                                                                                    playerViewModel.startLineDrag()
+                                                                                }
+                                                                                let dx = Double(value.translation.width) / Double(videoGeometry.size.width)
+                                                                                playerViewModel.setFinishLineBottomX(bottomHandleDragStartX! + dx)
+                                                                            }
+                                                                            .onEnded { _ in
+                                                                                bottomHandleDragStartX = nil
+                                                                                playerViewModel.endLineDrag()
                                                                             }
                                                                     )
 

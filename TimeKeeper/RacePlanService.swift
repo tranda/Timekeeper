@@ -530,11 +530,15 @@ class RacePlanService: ObservableObject {
         body.append("Content-Disposition: form-data; name=\"status\"\r\n\r\n".data(using: .utf8)!)
         body.append("FINISHED\r\n".data(using: .utf8)!)
 
-        // Add lanes data
+        // Add lanes data. Lane numbers in the backend are 1-indexed
+        // (the form key becomes the lane number, e.g. lanes[1][team] → lane 1).
+        // enumerated() is 0-indexed, so add 1 — otherwise the first crew is
+        // sent as lane=0 (rejected by the backend's min:1 lane validator) and
+        // the rest of the crews shift down by one lane.
         for (index, teamName) in sessionData.teamNames.enumerated() {
             guard !teamName.isEmpty else { continue }
 
-            let laneIndex = index
+            let laneIndex = index + 1
 
             // Add team name
             body.append("--\(boundary)\r\n".data(using: .utf8)!)

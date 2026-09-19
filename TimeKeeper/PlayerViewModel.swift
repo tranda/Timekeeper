@@ -108,6 +108,13 @@ class PlayerViewModel: ObservableObject {
             .compactMap { $0 }
             .sink { [weak self] session in
                 guard let self = self else { return }
+                // Drag priority: if the user is actively dragging the line or
+                // one of its handles, do NOT let an incoming session publish
+                // overwrite the live drag position. Without this guard, any
+                // sessionData reassignment that fires mid-drag (autosave,
+                // session reload, etc.) snaps the line back to the saved
+                // position the moment the publisher fires.
+                if self.isLineDragActive { return }
                 self.isApplyingSessionFinishLine = true
                 if let top = session.finishLineTopX {
                     self.finishLineTopX = max(0.0, min(1.0, top))

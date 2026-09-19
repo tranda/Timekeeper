@@ -458,6 +458,20 @@ struct RaceTimelineView: View {
                 triggerLaneSelection = false // Reset the trigger
             }
         }
+        // Keep currentRaceTime in sync with the AVPlayer's playhead. Arrow-key
+        // frame-stepping in ContentView only updates playerViewModel.currentTime;
+        // without this observer the timeline's race-time readout (and the
+        // "Mark Finish at HH:MM:SS.mmm" button label / recorded finish time)
+        // stay stuck at the last slider value while the displayed frame moves.
+        // Skip the sync while the user is actively dragging the timeline slider
+        // so we don't fight the drag's own writes.
+        .onChange(of: playerViewModel.currentTime) { videoTime in
+            if isDragging { return }
+            let synced = max(0, min(raceEndTime, videoTime + videoStartInRace))
+            if abs(synced - currentRaceTime) > 0.0005 {
+                currentRaceTime = synced
+            }
+        }
     }
 
     private func seekToRaceTime() {
