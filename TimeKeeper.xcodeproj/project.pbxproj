@@ -25,6 +25,7 @@
 		B5A0C2072B00000000000016 /* UVCExposureControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2062B00000000000015 /* UVCExposureControl.swift */; };
 		B5A0C2092B00000000000018 /* AppLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C2082B00000000000017 /* AppLog.swift */; };
 		B5A0C20B2B0000000000001A /* LogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5A0C20A2B00000000000019 /* LogView.swift */; };
+		B5A0C30A2B0000000000001B /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = B5A0C30B2B0000000000001C /* AppIcon.icns */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -47,6 +48,7 @@
 		B5A0C2062B00000000000015 /* UVCExposureControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UVCExposureControl.swift; sourceTree = "<group>"; };
 		B5A0C2082B00000000000017 /* AppLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLog.swift; sourceTree = "<group>"; };
 		B5A0C20A2B00000000000019 /* LogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogView.swift; sourceTree = "<group>"; };
+		B5A0C30B2B0000000000001C /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
 		B5A0C10E2B00000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		B5A0C10F2B00000000000007 /* TimeKeeper.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TimeKeeper.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -101,6 +103,7 @@
 				B5A0C20A2B00000000000019 /* LogView.swift */,
 				B5A0C10E2B00000000000006 /* Info.plist */,
 				B5A0C10F2B00000000000007 /* TimeKeeper.entitlements */,
+				B5A0C30B2B0000000000001C /* AppIcon.icns */,
 			);
 			path = TimeKeeper;
 			sourceTree = "<group>";
@@ -163,6 +166,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B5A0C30A2B0000000000001B /* AppIcon.icns in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -335,7 +339,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 0.7.1;
+				MARKETING_VERSION = 0.8.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tranda.TimeKeeper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -363,7 +367,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 0.7.1;
+				MARKETING_VERSION = 0.8.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.tranda.TimeKeeper;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
