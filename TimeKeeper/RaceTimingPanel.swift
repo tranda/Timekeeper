@@ -1388,8 +1388,17 @@ struct RaceTimingPanel: View {
         playerViewModel.player.replaceCurrentItem(with: nil)
         captureManager.lastRecordedURL = nil
 
+        // Session files and videos are matched by "<num> - <title>" only, so a
+        // Races folder left over from a previous event can hold a same-named
+        // race belonging to a different event. Don't let it override this one.
+        let sessionURL = AppConfig.shared.getEventRacesDirectory()
+            .appendingPathComponent("\(newRaceName).json")
+        let isForeignSession = sessionBelongsToOtherRace(sessionURL, raceId: selectedRace.id)
+
         // Try to auto-find video for the new race
-        if let autoFoundVideo = findLatestVideoForRace(raceName: newRaceName) {
+        if isForeignSession {
+            print("⚠️ '\(newRaceName)' in Races folder belongs to another race (not id \(selectedRace.id)) — ignoring its session and video")
+        } else if let autoFoundVideo = findLatestVideoForRace(raceName: newRaceName) {
             print("🔍 Auto-found video for new race '\(newRaceName)': \(autoFoundVideo.path)")
             loadVideoFromPath(autoFoundVideo.path)
             timingModel.sessionData?.videoFilePath = autoFoundVideo.path
@@ -1422,7 +1431,9 @@ struct RaceTimingPanel: View {
         }
 
         // Check for existing session JSON file for this race
-        loadExistingSessionForRace(raceName: newRaceName)
+        if !isForeignSession {
+            loadExistingSessionForRace(raceName: newRaceName)
+        }
 
         // Only clear video state if no existing session was found
         if timingModel.sessionData?.videoFilePath == nil {
@@ -1443,6 +1454,17 @@ struct RaceTimingPanel: View {
         let seconds = Double(components[1]) ?? 0
 
         return minutes * 60 + seconds
+    }
+
+    /// True when a session file exists at `url` but was recorded for a different
+    /// server race id (e.g. race #1 of a previous event with the same title).
+    /// Files without a raceId (older or manual sessions) are never treated as foreign.
+    private func sessionBelongsToOtherRace(_ url: URL, raceId: Int) -> Bool {
+        struct SessionRaceId: Decodable { let raceId: Int? }
+        guard let data = try? Data(contentsOf: url),
+              let stored = try? JSONDecoder().decode(SessionRaceId.self, from: data),
+              let storedId = stored.raceId else { return false }
+        return storedId != raceId
     }
 
     // Load existing session data for a race if JSON file exists

@@ -49,12 +49,12 @@ Current version: 0.7.4
    xcodebuild -project TimeKeeper.xcodeproj -scheme TimeKeeper -configuration Release clean build
    ```
 
-2. **Deploy to Desktop** (replace old version if exists):
+2. **Deploy to /Applications** so all users on this Mac can run it (replace old version if exists). First check TimeKeeper isn't running (`pgrep -fl "TimeKeeper.app/Contents/MacOS"`); if it is, ask the user to quit it before replacing:
    ```bash
-   rm -rf ~/Desktop/TimeKeeper.app
-   cp -R /Users/zorantrandafilovic/Library/Developer/Xcode/DerivedData/TimeKeeper-dggblasvfdpwjuazmiprpyuzepwz/Build/Products/Release/TimeKeeper.app ~/Desktop/TimeKeeper.app
+   rm -rf /Applications/TimeKeeper.app
+   cp -R /Users/zorantrandafilovic/Library/Developer/Xcode/DerivedData/TimeKeeper-dggblasvfdpwjuazmiprpyuzepwz/Build/Products/Release/TimeKeeper.app /Applications/TimeKeeper.app
    ```
 
-3. **Confirm deployment**: Inform user that TimeKeeper.app has been deployed to Desktop
+3. **Confirm deployment**: Inform user that TimeKeeper.app has been deployed to /Applications
 
-**Note**: "deploy" means build Release configuration and place on Desktop, replacing any existing version
+**Note**: "deploy" means build Release configuration and place in /Applications, replacing any existing version
