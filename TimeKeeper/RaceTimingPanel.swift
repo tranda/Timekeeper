@@ -148,9 +148,15 @@ struct RaceTimingPanel: View {
             }
 
             // Free Races Control Section (show when in Free Races mode)
-            if racePlanService.selectedEvent == nil && !availableFreeRaces.isEmpty {
+            // Also shown when no free race has been saved to disk yet but one is
+            // running/recorded in memory — otherwise the very first free race has
+            // no REVIEW / LOAD VIDEO / SAVE affordance at all (only the ⌘S shortcut),
+            // and the recording can't be saved without discovering that shortcut.
+            if racePlanService.selectedEvent == nil && (timingModel.isRaceInitialized || !availableFreeRaces.isEmpty) {
                 VStack(spacing: 4) {
                     HStack {
+                        // Nothing saved yet -> nothing to pick from; the buttons below still apply.
+                        if !availableFreeRaces.isEmpty {
                         Text("Race:")
                             .font(.system(size: 18, weight: .bold))
                             .foregroundColor(.secondary)
@@ -175,6 +181,7 @@ struct RaceTimingPanel: View {
                                     loadFreeRace(raceName: newRaceName)
                                 }
                             }
+                        }
                         }
 
                         // Only show Review/Save buttons if a race is actually initialized
