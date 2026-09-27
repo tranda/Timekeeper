@@ -37,9 +37,14 @@ struct RaceTimingPanel: View {
     @State private var resultsAlertMessage = ""
     @State private var resultsAlertIsSuccess = false
     @State private var showRefreshConfirm = false
+    @State private var showResetConfirm = false
+    // Set by REFRESH: the local session whose timing/video data should survive
+    // the reload from server (consumed by the next loadSelectedRaceData()).
+    @State private var pendingRefreshSnapshot: SessionData? = nil
 
     // Manual timing setup for sessions without wallclock data
     @State private var manualRaceDuration = ""
+    @State private var manualTimingError: String?
     @State private var manualVideoStart = ""
 
     // Save/confirmation system for race changes
@@ -333,7 +338,26 @@ struct RaceTimingPanel: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(timingModel.isRaceActive)
-                        .help("Discard the local recorded result for this race and reload fresh data (lanes/seeds/results) from the server")
+                        .help("Reload lanes and results from the server, keeping this race's timing sync, video and finish line")
+
+                        Button(action: {
+                            showResetConfirm = true
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text("RESET")
+                                    .font(.system(size: 12, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(height: 35)
+                            .padding(.horizontal, 10)
+                            .background(Color.red)
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(timingModel.isRaceActive)
+                        .help("Move this race's saved session to the Trash and start over from server data")
 
                         if isReviewMode {
                             Button(action: {
@@ -761,9 +785,15 @@ struct RaceTimingPanel: View {
         }
         .alert("Refresh from server?", isPresented: $showRefreshConfirm) {
             Button("Cancel", role: .cancel) { }
-            Button("Refresh", role: .destructive) { resetCurrentRaceFromServer() }
+            Button("Refresh") { refreshCurrentRaceFromServer() }
         } message: {
-            Text("This discards the locally recorded result for this race and reloads fresh data (lanes, seeds, results) from the server. Recorded times for this race that haven't been sent will be lost.")
+            Text("Lanes, seeds and results for this race are replaced with the server's. Timing sync, video, finish line and exported photos are kept. Local times that haven't been sent will be replaced.")
+        }
+        .alert("Reset this race?", isPresented: $showResetConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reset", role: .destructive) { resetCurrentRaceFromServer() }
+        } message: {
+            Text("This race's saved session (times, timing sync, finish line, photo list) is moved to the Trash and the race is reloaded from the server. The video and photo files stay in the race folder.")
         }
         .sheet(isPresented: $showNewRaceSheet) {
             VStack(spacing: 20) {
@@ -1348,17 +1378,37 @@ struct RaceTimingPanel: View {
         print("📺 Selected video loaded successfully for review mode")
     }
 
+    /// Reload lanes/seeds/results for the selected race from the server while
+    /// keeping the locally owned session data (timing sync, video, finish line,
+    /// exported photos). The session file is rewritten once the reload finishes.
+    private func refreshCurrentRaceFromServer() {
+        guard let selectedRace = racePlanService.selectedRace else { return }
+        if let current = timingModel.sessionData, current.raceId == selectedRace.id {
+            pendingRefreshSnapshot = current
+        } else {
+            pendingRefreshSnapshot = nil
+        }
+        hasUnsavedChanges = false  // already confirmed in the Refresh dialog
+        reloadSelectedRaceFromServer()
+    }
+
     /// Discard the locally recorded session for the currently selected race and
-    /// reload fresh data from the server (lanes, seeds, results). Clears stale
-    /// cached results/seeds after the backend has been updated.
+    /// reload fresh data from the server (lanes, seeds, results). The session
+    /// file goes to the Trash so a mis-click can be undone.
     private func resetCurrentRaceFromServer() {
         guard let selectedRace = racePlanService.selectedRace else { return }
         let raceName = "\(selectedRace.raceNumber) - \(selectedRace.title)"
         let sessionURL = AppConfig.shared.getEventRacesDirectory()
             .appendingPathComponent("\(raceName).json")
-        try? FileManager.default.removeItem(at: sessionURL)
+        moveSessionFileToTrash(sessionURL)
+        pendingRefreshSnapshot = nil
+        hasUnsavedChanges = false
         isReviewMode = false
         timingModel.resetRace()
+        reloadSelectedRaceFromServer()
+    }
+
+    private func reloadSelectedRaceFromServer() {
         // Re-fetch the plan; the $shouldRefreshRaceData hook reloads this race
         // from fresh server data once it arrives. Fall back to a local reload
         // from the cached plan when there's no API key configured.
@@ -1369,8 +1419,67 @@ struct RaceTimingPanel: View {
         }
     }
 
+    private func moveSessionFileToTrash(_ url: URL) {
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        do {
+            try FileManager.default.trashItem(at: url, resultingItemURL: nil)
+            print("🗑️ Moved session file to Trash: \(url.lastPathComponent)")
+        } catch {
+            print("❌ Could not move session file to Trash: \(error)")
+        }
+    }
+
+    /// Re-apply the locally owned parts of a session after the race was rebuilt
+    /// from server data, then persist the merged result.
+    private func restoreLocalSessionData(from saved: SessionData) {
+        guard timingModel.sessionData != nil else { return }
+
+        timingModel.sessionData?.raceStartWallclock = saved.raceStartWallclock
+        timingModel.sessionData?.videoStartWallclock = saved.videoStartWallclock
+        timingModel.sessionData?.videoStopWallclock = saved.videoStopWallclock
+        timingModel.sessionData?.videoStartInRace = saved.videoStartInRace
+        timingModel.sessionData?.raceDuration = saved.raceDuration
+        timingModel.sessionData?.recordingStartupDelay = saved.recordingStartupDelay
+        timingModel.sessionData?.notes = saved.notes
+        timingModel.sessionData?.exportedImages = saved.exportedImages
+        timingModel.sessionData?.selectedImagesForSending = saved.selectedImagesForSending
+        timingModel.sessionData?.detectionLine = saved.detectionLine
+        timingModel.sessionData?.finishLineTopX = saved.finishLineTopX
+        timingModel.sessionData?.finishLineBottomX = saved.finishLineBottomX
+        timingModel.recordingStartupDelay = saved.recordingStartupDelay
+
+        timingModel.raceStartTime = saved.raceStartWallclock
+        if let raceStart = saved.raceStartWallclock {
+            if let raceDuration = saved.raceDuration {
+                timingModel.raceStopTime = raceStart.addingTimeInterval(raceDuration)
+                timingModel.raceElapsedTime = raceDuration
+            } else {
+                timingModel.raceStopTime = saved.videoStopWallclock
+            }
+        }
+
+        if let videoPath = saved.videoFilePath, FileManager.default.fileExists(atPath: videoPath) {
+            timingModel.sessionData?.videoFilePath = videoPath
+            loadVideoFromPath(videoPath)
+        } else {
+            captureManager.videoStartTime = saved.videoStartWallclock
+            captureManager.videoStopTime = saved.videoStopWallclock
+        }
+
+        // Replace the old session file (kept in the Trash) with the merged one
+        let sessionURL = AppConfig.shared.getEventRacesDirectory()
+            .appendingPathComponent("\(timingModel.sessionData?.raceName ?? "Race").json")
+        moveSessionFileToTrash(sessionURL)
+        saveCurrentRaceData()
+        print("🔄 Refreshed race from server, kept local timing/video data")
+    }
+
     private func loadSelectedRaceData() {
         guard let selectedRace = racePlanService.selectedRace else { return }
+
+        // REFRESH in progress: rebuild from server data, then restore local timing
+        let refreshSnapshot = pendingRefreshSnapshot
+        pendingRefreshSnapshot = nil
 
         // Auto-exit review mode when changing races
         isReviewMode = false
@@ -1438,7 +1547,9 @@ struct RaceTimingPanel: View {
         }
 
         // Check for existing session JSON file for this race
-        if !isForeignSession {
+        if let refreshSnapshot, refreshSnapshot.raceId == selectedRace.id {
+            restoreLocalSessionData(from: refreshSnapshot)
+        } else if !isForeignSession {
             loadExistingSessionForRace(raceName: newRaceName)
         }
 
@@ -1816,81 +1927,58 @@ struct RaceTimingPanel: View {
                 Spacer()
             }
 
-            Text("This session is missing timing synchronization data. Enter the race duration and when video recording started relative to race start.")
+            Text("This session is missing timing synchronization data. Enter the race duration and how far into the race the video recording started (tip: scrub to a finish frame; video start = finish race time − video time).")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
             HStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Race Duration (mm:ss)")
+                    Text("Race Duration (mm:ss.fff)")
                         .font(.caption)
                         .fontWeight(.medium)
 
-                    TextField("01:30", text: $manualRaceDuration)
+                    TextField("01:30.000", text: $manualRaceDuration)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Video Start Delay (mm:ss)")
+                    Text("Video Start in Race (mm:ss.fff)")
                         .font(.caption)
                         .fontWeight(.medium)
 
-                    TextField("00:50", text: $manualVideoStart)
+                    TextField("00:41.500", text: $manualVideoStart)
                         .textFieldStyle(.roundedBorder)
                         .frame(width: 100)
                 }
 
                 Button("Apply Timing") {
-                    guard let raceDuration = parseTimeString(manualRaceDuration),
-                          let videoStartDelay = parseTimeString(manualVideoStart) else {
-                        print("Failed to parse manual timing values")
+                    guard let raceDuration = TimeInput.parse(manualRaceDuration), raceDuration > 0,
+                          let videoStartInRace = TimeInput.parse(manualVideoStart) else {
+                        manualTimingError = "Couldn't read the times — use mm:ss.fff (e.g. 01:05.250) or seconds (e.g. 65.25)."
+                        print("Failed to parse manual timing values: duration='\(manualRaceDuration)' videoStart='\(manualVideoStart)'")
                         return
                     }
+                    manualTimingError = nil
 
-                    // Create synthetic wallclock times based on manual input
-                    // Video started before race, race starts at videoStartDelay seconds into video
-                    let now = Date()
-                    let raceStartTime = now
-                    let videoStartTime_wallclock = raceStartTime.addingTimeInterval(-videoStartDelay)
-                    let raceStopTime = raceStartTime.addingTimeInterval(raceDuration)
+                    // videoStartInRace = seconds from race start to video start
+                    // (positive: recording began after the gun). Anchor wallclocks
+                    // on the video file's creation time when available.
+                    timingModel.sessionData?.raceStartWallclock = nil
+                    timingModel.sessionData?.videoStartInRace = videoStartInRace
+                    timingModel.sessionData?.raceDuration = raceDuration
+                    timingModel.ensureTimingAnchor()
 
-                    // Calculate video stop time using actual video duration if available
-                    var videoStopTime = videoStartTime_wallclock.addingTimeInterval(videoStartDelay + raceDuration)
-
-                    // If we have a video file, use its actual duration
-                    if let videoFilePath = timingModel.sessionData?.videoFilePath,
-                       FileManager.default.fileExists(atPath: videoFilePath) {
-                        let videoURL = URL(fileURLWithPath: videoFilePath)
-                        if let actualVideoDuration = getVideoDuration(from: videoURL) {
-                            videoStopTime = videoStartTime_wallclock.addingTimeInterval(actualVideoDuration)
-                            print("📹 Using actual video duration: \(actualVideoDuration)s")
-                        }
-                    }
-
-                    // Update the session data
-                    timingModel.sessionData?.raceStartWallclock = raceStartTime
-                    timingModel.sessionData?.videoStartWallclock = videoStartTime_wallclock
-                    timingModel.sessionData?.videoStopWallclock = videoStopTime
-                    timingModel.sessionData?.videoStartInRace = videoStartDelay
-
-                    // Update the timing model
-                    timingModel.raceStartTime = raceStartTime
-                    timingModel.raceStopTime = raceStopTime
-
-                    // Update the capture manager for timeline
-                    captureManager.videoStartTime = videoStartTime_wallclock
-                    captureManager.videoStopTime = videoStopTime
-
-                    // Save the updated session
-                    // Session will be saved manually via Save button
+                    timingModel.raceElapsedTime = raceDuration
+                    captureManager.videoStartTime = timingModel.sessionData?.videoStartWallclock
+                    captureManager.videoStopTime = timingModel.sessionData?.videoStopWallclock
+                    markAsUnsaved()
 
                     print("✅ Applied manual timing:")
                     print("   Race duration: \(raceDuration)s")
-                    print("   Video start delay: \(videoStartDelay)s")
-                    print("   Race start (wallclock): \(raceStartTime)")
-                    print("   Video start (wallclock): \(videoStartTime_wallclock)")
-                    print("   Video stop (wallclock): \(videoStopTime)")
+                    print("   Video start in race: \(videoStartInRace)s")
+                    print("   Race start (wallclock): \(timingModel.sessionData?.raceStartWallclock?.description ?? "nil")")
+                    print("   Video start (wallclock): \(timingModel.sessionData?.videoStartWallclock?.description ?? "nil")")
 
                     // Clear the input fields
                     manualRaceDuration = ""
@@ -1900,6 +1988,12 @@ struct RaceTimingPanel: View {
                 .disabled(manualRaceDuration.isEmpty || manualVideoStart.isEmpty)
 
                 Spacer()
+            }
+
+            if let manualTimingError {
+                Text(manualTimingError)
+                    .font(.caption)
+                    .foregroundColor(.red)
             }
         }
         .padding()
@@ -1916,58 +2010,15 @@ struct RaceTimingPanel: View {
         guard manualRaceDuration.isEmpty && manualVideoStart.isEmpty,
               let sessionData = timingModel.sessionData else { return }
 
-        // Get actual video duration from file if available
-        if let videoFilePath = sessionData.videoFilePath,
-           FileManager.default.fileExists(atPath: videoFilePath) {
-            let videoURL = URL(fileURLWithPath: videoFilePath)
-            if let actualVideoDuration = getVideoDuration(from: videoURL) {
-                // Calculate race duration based on video duration and when race started
-                if sessionData.videoStartInRace > 0 {
-                    let raceDuration = actualVideoDuration - sessionData.videoStartInRace
-                    manualRaceDuration = formatTimeForInput(raceDuration)
-                    print("📝 Auto-populated race duration from video: \(manualRaceDuration)")
-                } else {
-                    // Fallback: use full video duration as race duration
-                    manualRaceDuration = formatTimeForInput(actualVideoDuration)
-                    print("📝 Auto-populated full video duration: \(manualRaceDuration)")
-                }
-            }
-        } else {
-            // Fallback: Calculate race duration from wallclock times
-            if let raceStart = sessionData.raceStartWallclock,
-               let raceStop = sessionData.videoStopWallclock {
-                let raceDuration = raceStop.timeIntervalSince(raceStart)
-                manualRaceDuration = formatTimeForInput(raceDuration)
-                print("📝 Auto-populated race duration from wallclock: \(manualRaceDuration)")
-            }
+        if let raceDuration = sessionData.raceDuration {
+            manualRaceDuration = TimeInput.format(raceDuration)
+        } else if let latestFinish = sessionData.finishEvents.map({ $0.tRace }).max(), latestFinish > 0 {
+            manualRaceDuration = TimeInput.format((latestFinish + 5).rounded(.up))
         }
 
-        // Use existing videoStartInRace if available
-        if sessionData.videoStartInRace > 0 {
-            manualVideoStart = formatTimeForInput(sessionData.videoStartInRace)
-            print("📝 Auto-populated video start delay: \(manualVideoStart)")
-        } else if let raceStart = sessionData.raceStartWallclock,
-                  let videoStart = sessionData.videoStartWallclock {
-            // Calculate from wallclock difference
-            let videoStartDelaySeconds = raceStart.timeIntervalSince(videoStart)
-            if videoStartDelaySeconds > 0 {
-                manualVideoStart = formatTimeForInput(videoStartDelaySeconds)
-                print("📝 Auto-populated video start delay from wallclock: \(manualVideoStart)")
-            }
+        if sessionData.videoStartInRace != 0 {
+            manualVideoStart = TimeInput.format(sessionData.videoStartInRace)
         }
-    }
-
-    private func formatTimeForInput(_ seconds: Double) -> String {
-        let minutes = Int(seconds) / 60
-        let secs = Int(seconds.truncatingRemainder(dividingBy: 60))
-        return String(format: "%02d:%02d", minutes, secs)
-    }
-
-    private func getVideoDuration(from url: URL) -> Double? {
-        let asset = AVAsset(url: url)
-        let duration = asset.duration
-        guard duration.isValid && !duration.isIndefinite else { return nil }
-        return CMTimeGetSeconds(duration)
     }
 
     // MARK: - Save/Confirmation System

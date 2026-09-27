@@ -2,6 +2,36 @@ import Foundation
 import Combine
 import AVFoundation
 
+// MARK: - Time Input
+
+/// Parsing/formatting for user-typed race times. Accepts "mm:ss", "mm:ss.fff",
+/// "ss" or "ss.fff" (comma works as decimal separator; a leading "-" is allowed).
+enum TimeInput {
+    static func parse(_ text: String) -> Double? {
+        var s = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
+        var sign = 1.0
+        if s.hasPrefix("-") { sign = -1; s.removeFirst() }
+        let parts = s.split(separator: ":", omittingEmptySubsequences: false)
+        switch parts.count {
+        case 1:
+            guard let secs = Double(parts[0]), secs >= 0 else { return nil }
+            return sign * secs
+        case 2:
+            guard let mins = Double(parts[0]), let secs = Double(parts[1]),
+                  mins >= 0, secs >= 0, secs < 60 else { return nil }
+            return sign * (mins * 60 + secs)
+        default:
+            return nil
+        }
+    }
+
+    static func format(_ seconds: Double) -> String {
+        let sign = seconds < 0 ? "-" : ""
+        let totalMs = Int((abs(seconds) * 1000).rounded())
+        return String(format: "%@%02d:%02d.%03d", sign, totalMs / 60000, (totalMs / 1000) % 60, totalMs % 1000)
+    }
+}
+
 // MARK: - App Configuration
 class AppConfig {
     static let shared = AppConfig()
@@ -286,6 +316,32 @@ class RaceTimingModel: ObservableObject {
         sessionData?.videoStartInRace = videoStart.timeIntervalSince(raceStart)
     }
 
+    /// Sessions that were never saved with wallclock data (e.g. a race loaded from
+    /// the race plan with only a video on disk) have no race start to hang timing
+    /// edits on. Synthesize one: the video starts at the file's creation time and
+    /// the race starts `videoStartInRace` seconds before that.
+    func ensureTimingAnchor() {
+        guard sessionData != nil, sessionData?.raceStartWallclock == nil else { return }
+
+        var videoStart = Date()
+        if let path = sessionData?.videoFilePath,
+           let created = try? URL(fileURLWithPath: path).resourceValues(forKeys: [.creationDateKey]).creationDate {
+            videoStart = created
+        }
+        let raceStart = videoStart.addingTimeInterval(-(sessionData?.videoStartInRace ?? 0))
+
+        sessionData?.raceStartWallclock = raceStart
+        sessionData?.videoStartWallclock = videoStart
+        if let videoDuration = sessionData?.videoDuration {
+            sessionData?.videoStopWallclock = videoStart.addingTimeInterval(videoDuration)
+        }
+        raceStartTime = raceStart
+        if let raceDuration = sessionData?.raceDuration {
+            raceStopTime = raceStart.addingTimeInterval(raceDuration)
+        }
+        print("⏱️ Synthesized timing anchor: race start \(raceStart), video start \(videoStart)")
+    }
+
     func videoTimeForRaceTime(_ raceTime: Double) -> Double {
         let videoStartInRace = sessionData?.videoStartInRace ?? 0
         return max(0, raceTime - videoStartInRace)
@@ -361,12 +417,16 @@ class RaceTimingModel: ObservableObject {
         encoder.outputFormatting = .prettyPrinted
         encoder.dateEncodingStrategy = .iso8601
 
-        if let session = sessionData,
-           let data = try? encoder.encode(session) {
-            try? data.write(to: url)
+        guard let session = sessionData else {
+            print("❌ No session data to save")
+            return
+        }
+        do {
+            let data = try encoder.encode(session)
+            try data.write(to: url)
             print("💾 Session saved successfully to: \(url.path)")
-        } else {
-            print("❌ Failed to encode/save session")
+        } catch {
+            print("❌ Failed to encode/save session to \(url.path): \(error)")
         }
     }
 
@@ -379,7 +439,9 @@ class RaceTimingModel: ObservableObject {
             return
         }
 
-        DispatchQueue.main.async {
+        // Apply synchronously on the main thread: callers read sessionData
+        // (videoFilePath, wallclocks) right after loading.
+        let apply = {
             self.sessionData = loadedSession
             self.raceStartTime = loadedSession.raceStartWallclock
             self.finishEvents = loadedSession.finishEvents
@@ -411,6 +473,11 @@ class RaceTimingModel: ObservableObject {
                 }
                 print("📊 Calculated race elapsed time: \(self.raceElapsedTime)s (from wallclock)")
             }
+        }
+        if Thread.isMainThread {
+            apply()
+        } else {
+            DispatchQueue.main.async(execute: apply)
         }
     }
 

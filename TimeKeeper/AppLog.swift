@@ -2,39 +2,47 @@ import Foundation
 import Combine
 
 /// In-memory + on-disk log buffer. Singleton — `AppLog.shared`.
-/// The on-disk file is truncated each launch and lives at:
-///   ~/Library/Caches/TimeKeeper/session.log
+/// On-disk logs are cumulative and dated, one file per day:
+///   ~/Library/Logs/TimeKeeper/TimeKeeper-2026-09-27.log
+/// Every launch appends to today's file; the file rolls over at midnight.
+/// Log files are never deleted or truncated by the app.
 final class AppLog: ObservableObject {
     static let shared = AppLog()
 
-    /// Recent log lines (oldest first). Capped at `maxLines`.
+    /// Recent log lines of this launch (oldest first). Capped at `maxLines`.
     @Published private(set) var lines: [String] = []
+    /// File currently being written.
+    @Published private(set) var logFileURL: URL
 
+    let logDirectory: URL
     private let maxLines = 5000
-    let logFileURL: URL
-    private let fileHandle: FileHandle?
+    private let filePrefix = "TimeKeeper-"
+    private var fileHandle: FileHandle?
+    private var currentDay: String
     private let queue = DispatchQueue(label: "com.timekeeper.applog")
 
     private init() {
-        let cacheDir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+        let libraryDir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        let appCacheDir = cacheDir.appendingPathComponent("TimeKeeper", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appCacheDir, withIntermediateDirectories: true)
-        logFileURL = appCacheDir.appendingPathComponent("session.log")
-        // Truncate on each launch
-        FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
-        fileHandle = try? FileHandle(forWritingTo: logFileURL)
+        logDirectory = libraryDir.appendingPathComponent("Logs/TimeKeeper", isDirectory: true)
+        try? FileManager.default.createDirectory(at: logDirectory, withIntermediateDirectories: true)
+
+        let now = Date()
+        currentDay = AppLog.dayFormatter.string(from: now)
+        logFileURL = logDirectory.appendingPathComponent("\(filePrefix)\(currentDay).log")
+        openCurrentFile()
+        appendToFile("")
+        appendToFile("===== [\(AppLog.dateTimeFormatter.string(from: now))] TimeKeeper \(AppLog.appVersion) launched =====")
     }
 
     /// Append a log line. Thread-safe.
     func write(_ message: String) {
-        let stamped = "[\(AppLog.timestamp())] \(message)"
+        let now = Date()
+        let stamped = "[\(AppLog.timestampFormatter.string(from: now))] \(message)"
         queue.async { [weak self] in
             guard let self = self else { return }
-            if let data = (stamped + "\n").data(using: .utf8) {
-                try? self.fileHandle?.seekToEnd()
-                self.fileHandle?.write(data)
-            }
+            self.rollOverIfNewDay(now)
+            self.appendToFile(stamped)
             DispatchQueue.main.async {
                 self.lines.append(stamped)
                 if self.lines.count > self.maxLines {
@@ -44,20 +52,62 @@ final class AppLog: ObservableObject {
         }
     }
 
-    func clear() {
-        queue.async { [weak self] in
-            try? self?.fileHandle?.truncate(atOffset: 0)
-            DispatchQueue.main.async {
-                self?.lines.removeAll()
-            }
+    /// Clears the on-screen buffer only; the log file on disk is not touched.
+    func clearView() {
+        DispatchQueue.main.async {
+            self.lines.removeAll()
         }
     }
 
-    private static let timestampFormatter: DateFormatter = {
+    // MARK: - File handling (called on `queue`, or from init)
+
+    private func appendToFile(_ line: String) {
+        guard let data = (line + "\n").data(using: .utf8) else { return }
+        try? fileHandle?.seekToEnd()
+        fileHandle?.write(data)
+    }
+
+    private func openCurrentFile() {
+        if !FileManager.default.fileExists(atPath: logFileURL.path) {
+            FileManager.default.createFile(atPath: logFileURL.path, contents: nil)
+        }
+        fileHandle = try? FileHandle(forWritingTo: logFileURL)
+    }
+
+    private func switchFile(to url: URL) {
+        try? fileHandle?.close()
+        DispatchQueue.main.async { self.logFileURL = url }
+        // Open synchronously so the next append on this queue goes to the new file
+        if !FileManager.default.fileExists(atPath: url.path) {
+            FileManager.default.createFile(atPath: url.path, contents: nil)
+        }
+        fileHandle = try? FileHandle(forWritingTo: url)
+    }
+
+    private func rollOverIfNewDay(_ now: Date) {
+        let day = AppLog.dayFormatter.string(from: now)
+        guard day != currentDay else { return }
+        currentDay = day
+        switchFile(to: logDirectory.appendingPathComponent("\(filePrefix)\(day).log"))
+        appendToFile("===== [\(AppLog.dateTimeFormatter.string(from: now))] New day (TimeKeeper \(AppLog.appVersion)) =====")
+    }
+
+    // MARK: - Formatting
+
+    private static func formatter(_ format: String) -> DateFormatter {
         let f = DateFormatter()
-        f.dateFormat = "HH:mm:ss.SSS"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.dateFormat = format
         return f
-    }()
+    }
+
+    private static let timestampFormatter = formatter("HH:mm:ss.SSS")
+    private static let dayFormatter = formatter("yyyy-MM-dd")
+    private static let dateTimeFormatter = formatter("yyyy-MM-dd HH:mm:ss")
+
+    private static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+    }
 
     static func timestamp() -> String {
         return timestampFormatter.string(from: Date())

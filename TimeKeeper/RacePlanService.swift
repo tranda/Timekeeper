@@ -134,8 +134,12 @@ class RacePlanService: ObservableObject {
                                 self?.saveCachedRacePlans()
                                 self?.errorMessage = nil
 
-                                // If there's a selected race, trigger UI refresh
-                                if self?.selectedRace != nil {
+                                // If there's a selected race, point it at the freshly
+                                // fetched copy and trigger UI refresh
+                                if let selectedId = self?.selectedRace?.id {
+                                    if let fresh = racePlan.races.first(where: { $0.id == selectedId }) {
+                                        self?.selectedRace = fresh
+                                    }
                                     self?.shouldRefreshRaceData = true
                                 }
                             case .empty:

@@ -26,7 +26,15 @@ struct RaceTimelineView: View {
         }
 
         // Fallback to wallclock calculation
-        guard let raceStart = timingModel.raceStartTime else { return 0 }
+        guard let raceStart = timingModel.raceStartTime else {
+            // No timing data at all (e.g. race loaded from the plan with only a
+            // video on disk): size the timeline to cover finishes and the video
+            // so markers and the video bar stay positionable.
+            let latestFinish = timingModel.finishEvents.map { $0.tRace }.max() ?? 0
+            let videoEnd = timingModel.sessionData?.videoDuration.map { videoStartInRace + $0 } ?? 0
+            let fallback = max(latestFinish + 5, videoEnd)
+            return fallback > 0 ? fallback : 60
+        }
         // Use stop time if race was stopped, otherwise current time
         if let raceStop = timingModel.raceStopTime {
             return raceStop.timeIntervalSince(raceStart)
@@ -36,8 +44,9 @@ struct RaceTimelineView: View {
 
     var videoStartInRace: Double {
         // Use videoStartInRace from session data if available (for manual timing)
+        // (also when there is no wallclock data to derive it from)
         if let videoStartInRace = timingModel.sessionData?.videoStartInRace,
-           videoStartInRace > 0 {
+           videoStartInRace > 0 || captureManager.videoStartTime == nil || timingModel.raceStartTime == nil {
             let result = videoStartInRace  // Positive because video started after race began
             print("🐛 Timeline: videoStartInRace = \(result) (using videoStartInRace: \(videoStartInRace))")
             return result
@@ -153,6 +162,7 @@ struct RaceTimelineView: View {
                                 updateVideoStartInRace: updateVideoStartInRace,
                                 onDragCompleted: {
                                     print("🎬 Video timing drag completed - data ready for manual save")
+                                    onDataChanged()
                                 }
                             )
                         }
@@ -668,35 +678,14 @@ struct RaceTimelineView: View {
                         .fontWeight(.medium)
 
                     HStack(spacing: 8) {
-                        TextField("mm:ss", text: Binding(
-                            get: {
-                                // First try to use stored race duration
-                                if let raceDuration = timingModel.sessionData?.raceDuration {
-                                    return formatTimeForInput(raceDuration)
-                                }
-
-                                // Fallback to calculated duration from wallclock times
-                                if let sessionData = timingModel.sessionData,
-                                   let raceStart = sessionData.raceStartWallclock,
-                                   let raceStop = timingModel.raceStopTime {
-                                    let duration = raceStop.timeIntervalSince(raceStart)
-                                    return formatTimeForInput(duration)
-                                } else if let maxFinishTime = timingModel.finishEvents.map({ $0.tRace }).max(), maxFinishTime > 0 {
-                                    // Use max finish time + buffer as race duration
-                                    return formatTimeForInput(maxFinishTime + 10)
-                                }
-                                return ""
-                            },
-                            set: { newValue in
-                                if let duration = parseTimeString(newValue) {
-                                    updateRaceDuration(duration)
-                                }
-                            }
-                        ))
-                        .textFieldStyle(.roundedBorder)
+                        TimeEntryField(value: currentRaceDurationForInput) { duration in
+                            guard duration > 0 else { return false }
+                            updateRaceDuration(duration)
+                            return true
+                        }
                         .frame(width: 80)
 
-                        Text("(e.g., 01:30)")
+                        Text("(e.g., 01:30.250)")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
@@ -708,12 +697,13 @@ struct RaceTimelineView: View {
                         .fontWeight(.medium)
 
                     HStack(spacing: 8) {
-                        Text(formatTime(videoStartInRace))
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundColor(.blue)
-                            .frame(width: 80, alignment: .leading)
+                        TimeEntryField(value: videoStartInRace) { start in
+                            updateVideoStartInRace(start)
+                            return true
+                        }
+                        .frame(width: 80)
 
-                        Text("(drag blue bar)")
+                        Text("(or drag blue bar)")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }
@@ -755,55 +745,108 @@ struct RaceTimelineView: View {
         .cornerRadius(8)
     }
 
-    private func formatTimeForInput(_ seconds: Double) -> String {
-        let minutes = Int(seconds) / 60
-        let secs = Int(seconds.truncatingRemainder(dividingBy: 60))
-        return String(format: "%02d:%02d", minutes, secs)
-    }
-
-    private func parseTimeString(_ timeString: String) -> Double? {
-        let components = timeString.split(separator: ":")
-        guard components.count == 2 else { return nil }
-
-        let minutes = Double(components[0]) ?? 0
-        let seconds = Double(components[1]) ?? 0
-
-        return minutes * 60 + seconds
+    private var currentRaceDurationForInput: Double? {
+        if let raceDuration = timingModel.sessionData?.raceDuration {
+            return raceDuration
+        }
+        if let raceStart = timingModel.sessionData?.raceStartWallclock,
+           let raceStop = timingModel.raceStopTime {
+            return raceStop.timeIntervalSince(raceStart)
+        }
+        if let maxFinishTime = timingModel.finishEvents.map({ $0.tRace }).max(), maxFinishTime > 0 {
+            // Use max finish time + buffer as race duration
+            return maxFinishTime + 10
+        }
+        return nil
     }
 
     private func updateRaceDuration(_ duration: Double) {
-        guard let sessionData = timingModel.sessionData else { return }
+        guard timingModel.sessionData != nil else { return }
+        timingModel.ensureTimingAnchor()
 
         // Update ONLY race timing - do NOT touch video timing
-        if let raceStart = sessionData.raceStartWallclock ?? timingModel.raceStartTime {
-            let newRaceStop = raceStart.addingTimeInterval(duration)
-            timingModel.raceStopTime = newRaceStop
-            // Removed: timingModel.sessionData?.videoStopWallclock = newRaceStop
-
-            // Also update race elapsed time
-            timingModel.raceElapsedTime = duration
-
-            // Store race duration in session data for persistence
-            timingModel.sessionData?.raceDuration = duration
-
-            print("🎯 Updated race duration to \(formatTimeForInput(duration)) - stored in session data")
+        timingModel.sessionData?.raceDuration = duration
+        timingModel.raceElapsedTime = duration
+        if let raceStart = timingModel.sessionData?.raceStartWallclock ?? timingModel.raceStartTime {
+            timingModel.raceStopTime = raceStart.addingTimeInterval(duration)
         }
+        print("🎯 Updated race duration to \(TimeInput.format(duration)) - stored in session data")
+        onDataChanged()
     }
 
     private func updateVideoStartInRace(_ newVideoStartInRace: Double) {
-        guard let sessionData = timingModel.sessionData else { return }
+        guard timingModel.sessionData != nil else { return }
 
         // Update videoStartInRace in session data
         timingModel.sessionData?.videoStartInRace = newVideoStartInRace
+        timingModel.ensureTimingAnchor()
 
-        // Update wallclock timing if we have race start time
-        if let raceStart = sessionData.raceStartWallclock ?? timingModel.raceStartTime {
+        // Update wallclock timing (race start stays fixed, video start moves)
+        if let raceStart = timingModel.sessionData?.raceStartWallclock ?? timingModel.raceStartTime {
             let newVideoStartWallclock = raceStart.addingTimeInterval(newVideoStartInRace)
             captureManager.videoStartTime = newVideoStartWallclock
             timingModel.sessionData?.videoStartWallclock = newVideoStartWallclock
 
+            if let videoDuration = timingModel.sessionData?.videoDuration {
+                let newVideoStop = newVideoStartWallclock.addingTimeInterval(videoDuration)
+                captureManager.videoStopTime = newVideoStop
+                timingModel.sessionData?.videoStopWallclock = newVideoStop
+            }
+
             print("🎬 Updated video start in race to \(formatTime(newVideoStartInRace))")
             print("   New video start wallclock: \(newVideoStartWallclock)")
+        }
+    }
+}
+
+/// Text field for a race time (mm:ss.fff). Keeps its own draft while the user
+/// types and only commits on Return / focus loss, so partial input like "01:"
+/// isn't reformatted away mid-edit. `onCommit` returns false to reject a value.
+struct TimeEntryField: View {
+    let value: Double?
+    let onCommit: (Double) -> Bool
+
+    @State private var draft = ""
+    @State private var isInvalid = false
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
+        TextField("mm:ss.fff", text: $draft)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(size: 12, design: .monospaced))
+            .focused($isFocused)
+            .overlay(
+                RoundedRectangle(cornerRadius: 5)
+                    .stroke(Color.red, lineWidth: isInvalid ? 1.5 : 0)
+            )
+            .help(isInvalid ? "Couldn't read that time — use mm:ss.fff or seconds" : "Press Return to apply")
+            .onAppear { resetDraft() }
+            .onChange(of: value) { _ in
+                if !isFocused { resetDraft() }
+            }
+            .onChange(of: isFocused) { focused in
+                if !focused { commit() }
+            }
+            .onSubmit { commit() }
+    }
+
+    private func resetDraft() {
+        draft = value.map(TimeInput.format) ?? ""
+        isInvalid = false
+    }
+
+    private func commit() {
+        let trimmed = draft.trimmingCharacters(in: .whitespaces)
+        if trimmed.isEmpty || trimmed == value.map(TimeInput.format) {
+            resetDraft()
+            return
+        }
+        if let parsed = TimeInput.parse(trimmed), onCommit(parsed) {
+            draft = TimeInput.format(parsed)
+            isInvalid = false
+        } else {
+            isInvalid = true
+            print("⚠️ Invalid time input: '\(draft)'")
         }
     }
 }

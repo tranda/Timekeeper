@@ -9,6 +9,10 @@ struct LogView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Session Log").font(.headline)
+                Text(log.logFileURL.lastPathComponent)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .textSelection(.enabled)
                 Spacer()
                 Text("\(log.lines.count) line\(log.lines.count == 1 ? "" : "s")")
                     .font(.caption)
@@ -57,10 +61,11 @@ struct LogView: View {
                 }
                 .disabled(log.lines.isEmpty)
 
-                Button("Clear") {
-                    log.clear()
+                Button("Clear View") {
+                    log.clearView()
                 }
                 .disabled(log.lines.isEmpty)
+                .help("Empties this window only. The log file on disk is not changed or deleted.")
 
                 Button("Reveal in Finder") {
                     NSWorkspace.shared.activateFileViewerSelecting([log.logFileURL])
