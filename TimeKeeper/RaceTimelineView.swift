@@ -26,20 +26,24 @@ struct RaceTimelineView: View {
         }
 
         // Fallback to wallclock calculation
-        guard let raceStart = timingModel.raceStartTime else {
-            // No timing data at all (e.g. race loaded from the plan with only a
-            // video on disk): size the timeline to cover finishes and the video
-            // so markers and the video bar stay positionable.
-            let latestFinish = timingModel.finishEvents.map { $0.tRace }.max() ?? 0
-            let videoEnd = timingModel.sessionData?.videoDuration.map { videoStartInRace + $0 } ?? 0
-            let fallback = max(latestFinish + 5, videoEnd)
-            return fallback > 0 ? fallback : 60
+        if let raceStart = timingModel.raceStartTime {
+            // Use stop time if race was stopped, current time while it's running
+            if let raceStop = timingModel.raceStopTime {
+                return raceStop.timeIntervalSince(raceStart)
+            }
+            if timingModel.isRaceActive {
+                return Date().timeIntervalSince(raceStart)
+            }
         }
-        // Use stop time if race was stopped, otherwise current time
-        if let raceStop = timingModel.raceStopTime {
-            return raceStop.timeIntervalSince(raceStart)
-        }
-        return Date().timeIntervalSince(raceStart)
+
+        // Stopped race without a duration or stop time (e.g. race loaded from the
+        // plan with only a video on disk, whose race start may be a synthesized
+        // anchor from yesterday): size the timeline to cover finishes and the
+        // video so markers and the video bar stay positionable.
+        let latestFinish = timingModel.finishEvents.map { $0.tRace }.max() ?? 0
+        let videoEnd = timingModel.sessionData?.videoDuration.map { videoStartInRace + $0 } ?? 0
+        let fallback = max(latestFinish + 5, videoEnd)
+        return fallback > 0 ? fallback : 60
     }
 
     var videoStartInRace: Double {
@@ -866,6 +870,7 @@ struct DraggableVideoBar: View {
     let onDragCompleted: () -> Void
 
     @State private var dragStartVideoStartInRace: Double = 0
+    @State private var dragStartRaceEndTime: Double = 0
 
     var body: some View {
         RoundedRectangle(cornerRadius: 2)
@@ -898,12 +903,15 @@ struct DraggableVideoBar: View {
                         if !isDragging {
                             // Store the initial video start position when drag begins
                             dragStartVideoStartInRace = videoStartInRace
+                            dragStartRaceEndTime = raceEndTime
                             isDragging = true
                         }
 
                         // Calculate new video start time based on absolute drag distance
                         let dragDeltaX = value.translation.width
-                        let dragDeltaTime = (dragDeltaX / geometry.size.width) * raceEndTime
+                        // Scale by the timeline length at drag start, so a length
+                        // change mid-drag can't make the bar run away
+                        let dragDeltaTime = (dragDeltaX / geometry.size.width) * dragStartRaceEndTime
 
                         let newVideoStartInRace = dragStartVideoStartInRace + dragDeltaTime
                         updateVideoStartInRace(newVideoStartInRace)
