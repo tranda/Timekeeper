@@ -299,7 +299,12 @@ struct ContentView: View {
                                                 )
                                                 .onAppear {
                                                     if let url = captureManager.lastRecordedURL {
-                                                        playerViewModel.loadVideo(url: url)
+                                                        let clips = timingModel.videoClips.map { (url: URL(fileURLWithPath: $0.path), start: $0.relativeStart) }
+                                                        if clips.isEmpty {
+                                                            playerViewModel.loadVideo(url: url)
+                                                        } else {
+                                                            playerViewModel.loadVideo(clips: clips)
+                                                        }
                                                     }
                                                 }
 
@@ -888,6 +893,9 @@ struct ContentView: View {
     /// Returns the current video's frame duration (seconds per frame).
     /// Falls back to 1/30s if the rate cannot be determined.
     private func videoFrameDuration() -> Double {
+        if playerViewModel.sourceFrameRate > 0 {
+            return 1.0 / Double(playerViewModel.sourceFrameRate)
+        }
         guard let asset = playerViewModel.player.currentItem?.asset else {
             return 1.0 / 30.0
         }

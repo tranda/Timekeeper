@@ -752,9 +752,10 @@ class CaptureManager: NSObject, ObservableObject {
 
         DispatchQueue.main.async {
             self.isRecording = true
-            // Set video start time immediately when we initiate recording
-            self.videoStartTime = recordingInitiatedTime
-            self.timingModel?.setVideoStartTime(recordingInitiatedTime)
+            // Set video start time immediately when we initiate recording. A race
+            // can have several clips; the video timeline is anchored at the first.
+            self.timingModel?.beginVideoClip(url: fileURL, at: recordingInitiatedTime)
+            self.videoStartTime = self.timingModel?.sessionData?.videoStartWallclock ?? recordingInitiatedTime
             completion(true)
         }
     }
@@ -859,13 +860,16 @@ extension CaptureManager: AVCaptureFileOutputRecordingDelegate {
         DispatchQueue.main.async {
             if let error = error {
                 print("Recording error: \(error)")
-                self.lastRecordedURL = nil
+                self.timingModel?.discardVideoClip(url: outputFileURL)
+                // Earlier clips of this race are still usable
+                self.lastRecordedURL = self.timingModel?.videoClips.first.map { URL(fileURLWithPath: $0.path) }
                 self.stopRecordingCompletion?(nil)
             } else {
                 print("Recording finished: \(outputFileURL.lastPathComponent)")
-                self.lastRecordedURL = outputFileURL
                 self.videoStopTime = Date()
-                self.timingModel?.setVideoStopTime(self.videoStopTime!)
+                self.timingModel?.endVideoClip(url: outputFileURL, at: self.videoStopTime!)
+                // Stands for the race's video (first clip); playback combines all clips
+                self.lastRecordedURL = self.timingModel?.videoClips.first.map { URL(fileURLWithPath: $0.path) } ?? outputFileURL
 
                 let outputFolder = self.outputDirectory ?? outputFileURL.deletingLastPathComponent()
                 // Session will be saved manually via Save button

@@ -103,6 +103,7 @@ struct HelpView: View {
                             steps: [
                                 "Press ENTER to start race timing",
                                 "Press SPACE to begin video recording when competitors approach finish line",
+                                "Stopped the recording too early? Press SPACE again — earlier recordings of the race are kept and shown together on the timeline",
                                 "Press ENTER to stop race timing when all competitors have finished",
                                 "Recording automatically stops when race ends"
                             ]
@@ -115,7 +116,7 @@ struct HelpView: View {
                                 "Press ENTER when the first boat starts — START counts as its start",
                                 "Set the start interval (seconds between boats, saved per event) — a countdown shows which lane is due next",
                                 "As each following boat leaves, tap its lane in Lane Starts or press its lane number",
-                                "Record and mark finishes on the video exactly as for short races",
+                                "Record and mark finishes on the video exactly as for short races — press SPACE to stop and start again as boats arrive; every recording is kept",
                                 "Each crew's time is its finish minus its own start; fix a start in the Start column in review"
                             ]
                         )

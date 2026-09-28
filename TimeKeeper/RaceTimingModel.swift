@@ -119,6 +119,15 @@ struct FinishEvent: Identifiable, Codable {
     }
 }
 
+/// One recording of a race. A race can have several (e.g. a long-distance race
+/// filmed boat by boat, or a clip restarted by the operator); they are placed on
+/// one timeline by when each started.
+struct VideoClip: Codable, Equatable {
+    var path: String
+    var relativeStart: Double  // seconds after the race's first clip started
+    var duration: Double?
+}
+
 struct SessionData: Codable {
     var raceName: String
     var teamNames: [String]
@@ -142,6 +151,7 @@ struct SessionData: Codable {
     var finishLineBottomX: Double?  // Normalized X (0..1) for bottom endpoint of the photo finish overlay
     var isLongDistance: Bool?  // Long-distance race (>1000m): boats start one by one, each with its own start time
     var laneStartOffsets: [String: Double]?  // Team name -> seconds from race START to that boat's start (long distance only)
+    var videoClips: [VideoClip]?  // All recordings of this race in order; videoFilePath/videoStartWallclock describe the first
 
     init() {
         self.raceName = "Race"
@@ -345,6 +355,77 @@ class RaceTimingModel: ObservableObject {
         sessionData?.isLongDistance = isLongDistance ? true : nil
         isRaceInitialized = true
         print("Initialized new race: \(name) with \(teamNames.count) teams, event ID: \(eventId?.description ?? "none"), race ID: \(raceId?.description ?? "none")")
+    }
+
+    /// Recordings of this race in timeline order. Sessions from before multi-clip
+    /// support (a single videoFilePath) yield one clip.
+    var videoClips: [VideoClip] {
+        if let clips = sessionData?.videoClips, !clips.isEmpty {
+            return clips.sorted { $0.relativeStart < $1.relativeStart }
+        }
+        if let path = sessionData?.videoFilePath {
+            return [VideoClip(path: path, relativeStart: 0, duration: sessionData?.videoDuration)]
+        }
+        return []
+    }
+
+    /// The clip covering a position on the combined video timeline (seconds after
+    /// the first clip started), with the time inside that clip's own file.
+    func clip(atVideoTime videoTime: Double) -> (clip: VideoClip, localTime: Double)? {
+        for clip in videoClips {
+            guard let duration = clip.duration else { continue }
+            if videoTime >= clip.relativeStart && videoTime <= clip.relativeStart + duration {
+                return (clip, videoTime - clip.relativeStart)
+            }
+        }
+        return nil
+    }
+
+    /// A new recording began. The first clip anchors the video timeline; later
+    /// clips are placed relative to it, so earlier recordings are kept.
+    func beginVideoClip(url: URL, at date: Date) {
+        if (sessionData?.videoClips ?? []).isEmpty || sessionData?.videoStartWallclock == nil {
+            sessionData?.videoClips = []
+            setVideoStartTime(date)
+        }
+        let relativeStart = date.timeIntervalSince(sessionData?.videoStartWallclock ?? date)
+        sessionData?.videoClips?.append(VideoClip(path: url.path, relativeStart: round(relativeStart * 1000) / 1000))
+        sessionData?.videoFilePath = videoClips.first?.path
+        print("📹 Video clip \(sessionData?.videoClips?.count ?? 0) started at +\(String(format: "%.3f", relativeStart))s: \(url.lastPathComponent)")
+    }
+
+    func endVideoClip(url: URL, at date: Date) {
+        setVideoStopTime(date)
+        if let index = sessionData?.videoClips?.firstIndex(where: { $0.path == url.path }) {
+            sessionData?.videoClips?[index].duration = Self.readDuration(of: url.path)
+        }
+        refreshVideoSpan()
+    }
+
+    /// Recording failed: drop its clip so the timeline doesn't show a gap-less hole.
+    func discardVideoClip(url: URL) {
+        sessionData?.videoClips?.removeAll { $0.path == url.path }
+        sessionData?.videoFilePath = videoClips.first?.path
+    }
+
+    /// videoDuration covers all clips: from the first clip's start to the last one's end.
+    private func refreshVideoSpan() {
+        guard var clips = sessionData?.videoClips, !clips.isEmpty else { return }
+        for i in clips.indices where clips[i].duration == nil {
+            clips[i].duration = Self.readDuration(of: clips[i].path)
+        }
+        sessionData?.videoClips = clips
+        let end = clips.compactMap { clip in clip.duration.map { clip.relativeStart + $0 } }.max()
+        if let end {
+            sessionData?.videoDuration = end
+        }
+    }
+
+    private static func readDuration(of path: String) -> Double? {
+        guard FileManager.default.fileExists(atPath: path) else { return nil }
+        let duration = AVAsset(url: URL(fileURLWithPath: path)).duration
+        guard duration.isValid && !duration.isIndefinite else { return nil }
+        return CMTimeGetSeconds(duration)
     }
 
     func setVideoStartTime(_ date: Date) {
@@ -558,6 +639,12 @@ class RaceTimingModel: ObservableObject {
     }
 
     func readAndStoreVideoDuration(from videoPath: String) {
+        // Several recordings: the video timeline spans all of them
+        if (sessionData?.videoClips?.count ?? 0) > 1 {
+            refreshVideoSpan()
+            return
+        }
+
         guard FileManager.default.fileExists(atPath: videoPath) else {
             print("⚠️ Video file not found: \(videoPath)")
             return

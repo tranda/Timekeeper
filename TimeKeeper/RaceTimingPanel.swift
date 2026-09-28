@@ -1342,8 +1342,13 @@ struct RaceTimingPanel: View {
             print("  - Video stop: \(captureManager.videoStopTime?.description ?? "nil")")
         }
 
-        // Load video into player
-        playerViewModel.loadVideo(url: videoURL)
+        // Load video into player: every recording of the race on one timeline
+        let clips = timingModel.videoClips
+        if clips.count > 1 && clips.contains(where: { $0.path == videoPath }) {
+            playerViewModel.loadVideo(clips: clips.map { (url: URL(fileURLWithPath: $0.path), start: $0.relativeStart) })
+        } else {
+            playerViewModel.loadVideo(url: videoURL)
+        }
 
         print("📺 Video loaded successfully for review mode with timing sync")
     }
@@ -1444,6 +1449,9 @@ struct RaceTimingPanel: View {
 
     private func loadSelectedVideo(url: URL) {
         print("🎥 Loading selected video: \(url.path)")
+
+        // A manually chosen file replaces the race's recordings
+        timingModel.sessionData?.videoClips = nil
 
         // Read and store video duration automatically
         timingModel.readAndStoreVideoDuration(from: url.path)
@@ -1587,6 +1595,7 @@ struct RaceTimingPanel: View {
         timingModel.sessionData?.detectionLine = saved.detectionLine
         timingModel.sessionData?.finishLineTopX = saved.finishLineTopX
         timingModel.sessionData?.finishLineBottomX = saved.finishLineBottomX
+        timingModel.sessionData?.videoClips = saved.videoClips
         timingModel.recordingStartupDelay = saved.recordingStartupDelay
 
         // Server times are net (finish − boat's start); finish markers live on the
@@ -1845,8 +1854,9 @@ struct RaceTimingPanel: View {
                 // Video URL will be available for review
                 if let videoURL = url {
                     print("🟠 Video saved for review: \(videoURL.path)")
-                    // Save video path to session data for review mode
-                    timingModel.sessionData?.videoFilePath = videoURL.path
+                    // Save video path to session data for review mode (the
+                    // first clip when the race has several recordings)
+                    timingModel.sessionData?.videoFilePath = timingModel.videoClips.first?.path ?? videoURL.path
                 }
 
                 // Auto-switch to Review mode after stopping race

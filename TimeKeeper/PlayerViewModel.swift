@@ -145,9 +145,53 @@ class PlayerViewModel: ObservableObject {
             }
     }
 
+    /// Frame rate of the recorded footage (a composition track may not report one).
+    @Published var sourceFrameRate: Float = 0
+
+    /// Play all recordings of a race as one timeline: each clip placed at its
+    /// start (seconds after the first clip), with empty gaps in between.
+    func loadVideo(clips: [(url: URL, start: Double)]) {
+        guard clips.count > 1 else {
+            if let only = clips.first { loadVideo(url: only.url) }
+            return
+        }
+
+        let composition = AVMutableComposition()
+        guard let track = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { return }
+
+        var frameRate: Float = 0
+        for clip in clips.sorted(by: { $0.start < $1.start }) {
+            let asset = AVURLAsset(url: clip.url)
+            guard let source = asset.tracks(withMediaType: .video).first else {
+                print("⚠️ No video track in clip \(clip.url.lastPathComponent)")
+                continue
+            }
+            let end = composition.duration
+            var at = CMTime(seconds: clip.start, preferredTimescale: 6000)
+            if at > end {
+                track.insertEmptyTimeRange(CMTimeRange(start: end, end: at))
+            } else {
+                at = end  // never overlap the previous clip
+            }
+            do {
+                try track.insertTimeRange(source.timeRange, of: source, at: at)
+                track.preferredTransform = source.preferredTransform
+                if frameRate == 0 { frameRate = source.nominalFrameRate }
+            } catch {
+                print("⚠️ Could not add clip \(clip.url.lastPathComponent): \(error)")
+            }
+        }
+        print("🎞️ Loaded \(clips.count) clips as one timeline (\(String(format: "%.1f", composition.duration.seconds))s)")
+        loadItem(AVPlayerItem(asset: composition), frameRate: frameRate)
+    }
+
     func loadVideo(url: URL) {
         let asset = AVAsset(url: url)
-        let playerItem = AVPlayerItem(asset: asset)
+        loadItem(AVPlayerItem(asset: asset), frameRate: asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 0)
+    }
+
+    private func loadItem(_ playerItem: AVPlayerItem, frameRate: Float) {
+        sourceFrameRate = frameRate
 
         statusObserver = playerItem.publisher(for: \.status)
             .receive(on: DispatchQueue.main)
@@ -182,7 +226,7 @@ class PlayerViewModel: ObservableObject {
     func seekToNextFrame() {
         guard let currentItem = player.currentItem else { return }
 
-        let frameRate = currentItem.asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30.0
+        let frameRate = sourceFrameRate > 0 ? sourceFrameRate : (currentItem.asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30.0)
         let frameDuration = 1.0 / Double(frameRate)
         let nextTime = currentTime + frameDuration
 
@@ -194,7 +238,7 @@ class PlayerViewModel: ObservableObject {
     func seekToPreviousFrame() {
         guard let currentItem = player.currentItem else { return }
 
-        let frameRate = currentItem.asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30.0
+        let frameRate = sourceFrameRate > 0 ? sourceFrameRate : (currentItem.asset.tracks(withMediaType: .video).first?.nominalFrameRate ?? 30.0)
         let frameDuration = 1.0 / Double(frameRate)
         let previousTime = max(0, currentTime - frameDuration)
 

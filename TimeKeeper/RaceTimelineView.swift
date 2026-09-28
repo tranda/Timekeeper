@@ -84,7 +84,15 @@ struct RaceTimelineView: View {
 
     var isVideoAvailable: Bool {
         let available = currentRaceTime >= videoStartInRace && currentRaceTime <= videoEndInRace && captureManager.lastRecordedURL != nil
+        // Several recordings: not in the gaps between them
+        if available && hasMultipleClips {
+            return timingModel.clip(atVideoTime: currentRaceTime - videoStartInRace) != nil
+        }
         return available
+    }
+
+    private var hasMultipleClips: Bool {
+        (timingModel.sessionData?.videoClips?.count ?? 0) > 1
     }
 
     var body: some View {
@@ -169,6 +177,19 @@ struct RaceTimelineView: View {
                                 }
                             )
                             .allowsHitTesting(!isViewOnly)
+
+                            // Several recordings: mark where each clip actually has footage
+                            if hasMultipleClips {
+                                ForEach(Array(timingModel.videoClips.enumerated()), id: \.offset) { _, clip in
+                                    let clipStart = videoStartInRace + clip.relativeStart
+                                    let clipEnd = clipStart + (clip.duration ?? 0)
+                                    Rectangle()
+                                        .fill(Color.blue.opacity(0.85))
+                                        .frame(width: max(2, geometry.size.width * (clipEnd - clipStart) / raceEndTime), height: 6)
+                                        .offset(x: geometry.size.width * clipStart / raceEndTime, y: 32)
+                                        .allowsHitTesting(false)
+                                }
+                            }
                         }
                     }
 
@@ -287,6 +308,7 @@ struct RaceTimelineView: View {
                     Label(
                         currentRaceTime < videoStartInRace ? "Before Recording" :
                         currentRaceTime > videoEndInRace ? "After Recording" :
+                        hasMultipleClips ? "Between Recordings" :
                         "No Video",
                         systemImage: "video.slash"
                     )
@@ -567,12 +589,19 @@ struct RaceTimelineView: View {
     }
 
     private func exportCurrentFrame() {
-        guard let videoURL = captureManager.lastRecordedURL else { return }
+        guard var videoURL = captureManager.lastRecordedURL else { return }
+        var videoTime = currentRaceTime - videoStartInRace
+
+        // Several recordings: export from the clip file that covers this moment
+        if hasMultipleClips {
+            guard let hit = timingModel.clip(atVideoTime: videoTime) else { return }
+            videoURL = URL(fileURLWithPath: hit.clip.path)
+            videoTime = hit.localTime
+        }
 
         isExporting = true
 
         let exporter = FrameExporter()
-        let videoTime = currentRaceTime - videoStartInRace
 
         // Format filename with race name and time
         let raceName = timingModel.sessionData?.raceName ?? "Race"
@@ -726,7 +755,7 @@ struct RaceTimelineView: View {
                                 .foregroundColor(.green)
                                 .frame(width: 80, alignment: .leading)
 
-                            Text("(from file)")
+                            Text(hasMultipleClips ? "(\(timingModel.videoClips.count) recordings)" : "(from file)")
                                 .font(.caption2)
                                 .foregroundColor(.secondary)
                         } else {
