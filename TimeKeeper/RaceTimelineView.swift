@@ -52,18 +52,15 @@ struct RaceTimelineView: View {
         if let videoStartInRace = timingModel.sessionData?.videoStartInRace,
            videoStartInRace > 0 || captureManager.videoStartTime == nil || timingModel.raceStartTime == nil {
             let result = videoStartInRace  // Positive because video started after race began
-            print("🐛 Timeline: videoStartInRace = \(result) (using videoStartInRace: \(videoStartInRace))")
             return result
         }
 
         // Fallback to wallclock calculation
         guard let videoStart = captureManager.videoStartTime,
               let raceStart = timingModel.raceStartTime else {
-            print("🐛 Timeline: Missing timing data - videoStart: \(captureManager.videoStartTime?.description ?? "nil"), raceStart: \(timingModel.raceStartTime?.description ?? "nil")")
             return 0
         }
         let result = videoStart.timeIntervalSince(raceStart)  // Allow negative values
-        print("🐛 Timeline: videoStartInRace = \(result) (videoStart: \(videoStart), raceStart: \(raceStart))")
         return result
     }
 
@@ -71,24 +68,20 @@ struct RaceTimelineView: View {
         // First try to use stored video duration if available
         if let videoDuration = timingModel.sessionData?.videoDuration {
             let result = videoStartInRace + videoDuration
-            print("🐛 Timeline: videoEndInRace = \(result) (using stored duration: \(videoDuration)s)")
             return result
         }
 
         // Fallback to wallclock calculation
         guard let videoStop = captureManager.videoStopTime,
               let raceStart = timingModel.raceStartTime else {
-            print("🐛 Timeline: Missing end timing data - videoStop: \(captureManager.videoStopTime?.description ?? "nil"), raceStart: \(timingModel.raceStartTime?.description ?? "nil")")
             return raceEndTime
         }
         let result = videoStop.timeIntervalSince(raceStart)
-        print("🐛 Timeline: videoEndInRace = \(result) (fallback: videoStop - raceStart)")
         return result
     }
 
     var isVideoAvailable: Bool {
         let available = currentRaceTime >= videoStartInRace && currentRaceTime <= videoEndInRace && captureManager.lastRecordedURL != nil
-        print("🐛 Timeline: isVideoAvailable = \(available) (currentRaceTime: \(currentRaceTime), videoStart: \(videoStartInRace), videoEnd: \(videoEndInRace), hasURL: \(captureManager.lastRecordedURL != nil))")
         return available
     }
 
@@ -491,7 +484,6 @@ struct RaceTimelineView: View {
     private func seekToRaceTime() {
         if isVideoAvailable {
             let videoTime = currentRaceTime - videoStartInRace
-            print("Seeking - Race time: \(formatTime(currentRaceTime)), Video offset: \(formatTime(videoStartInRace)), Seeking to: \(formatTime(videoTime))")
             playerViewModel.isSeekingOutsideVideo = false
             playerViewModel.seek(to: videoTime, precise: true)
         } else {
@@ -545,22 +537,6 @@ struct RaceTimelineView: View {
         // Position marker based on race time
         let position = event.tRace / raceEndTime
         let xPosition = raceTimelineWidth * position
-
-        // Debug log for troubleshooting - log the most recent marker
-        if event.id == timingModel.finishEvents.last?.id {
-            print(">>> Marker position calculation:")
-            print("    Label: \(event.label)")
-            print("    Race time: \(formatTime(event.tRace))")
-            print("    Race end: \(formatTime(raceEndTime))")
-            print("    Video end in race: \(formatTime(videoEndInRace))")
-            print("    Video extends beyond race: \(videoEndInRace > raceEndTime)")
-            print("    Position %: \(position * 100)%")
-            print("    Geometry width: \(geometry.size.width)px")
-            print("    X position: \(xPosition)px")
-            if let vt = event.tVideo {
-                print("    Video time: \(formatTime(vt))")
-            }
-        }
 
         return xPosition
     }
@@ -797,8 +773,10 @@ struct RaceTimelineView: View {
                 timingModel.sessionData?.videoStopWallclock = newVideoStop
             }
 
-            print("🎬 Updated video start in race to \(formatTime(newVideoStartInRace))")
-            print("   New video start wallclock: \(newVideoStartWallclock)")
+            // Drags log once, on release (DraggableVideoBar.onEnded)
+            if !isDraggingVideoTiming {
+                print("🎬 Updated video start in race to \(formatTime(newVideoStartInRace))")
+            }
         }
     }
 }

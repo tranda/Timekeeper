@@ -1823,11 +1823,6 @@ struct RaceTimingPanel: View {
         let betterTimes = sortedEvents.filter { $0.tRace < targetTime }
         let position = betterTimes.count + 1
 
-        print("🏁 Position calculation for \(targetEvent.label):")
-        print("   Time: \(targetTime)")
-        print("   Teams with better times: \(betterTimes.count)")
-        print("   Calculated position: \(position)")
-
         return position
     }
 
