@@ -348,8 +348,9 @@ class RacePlanService: ObservableObject {
                 switch finishEvent.status {
                 case .finished:
                     // Convert seconds back to MM:SS.mmm format
-                    let minutes = Int(finishEvent.tRace) / 60
-                    let seconds = finishEvent.tRace.truncatingRemainder(dividingBy: 60)
+                    let netTime = sessionData.netTime(for: finishEvent)
+                    let minutes = Int(netTime) / 60
+                    let seconds = netTime.truncatingRemainder(dividingBy: 60)
                     laneData["time"] = String(format: "%d:%06.3f", minutes, seconds)
                 case .dns:
                     laneData["time"] = "DNS"
@@ -426,8 +427,9 @@ class RacePlanService: ObservableObject {
                 if let finishEvent = finishEvents.first(where: { $0.label == teamName }) {
                     switch finishEvent.status {
                     case .finished:
-                        let minutes = Int(finishEvent.tRace) / 60
-                        let seconds = finishEvent.tRace.truncatingRemainder(dividingBy: 60)
+                        let netTime = sessionData.netTime(for: finishEvent)
+                        let minutes = Int(netTime) / 60
+                        let seconds = netTime.truncatingRemainder(dividingBy: 60)
                         updatedLane = Lane(lane: updatedLane.lane, team: updatedLane.team, crewId: updatedLane.crewId,
                                          time: String(format: "%d:%06.3f", minutes, seconds), status: "FINISHED", position: updatedLane.position)
                     case .dns:
@@ -554,8 +556,9 @@ class RacePlanService: ObservableObject {
                 let timeString: String
                 switch finishEvent.status {
                 case .finished:
-                    let minutes = Int(finishEvent.tRace) / 60
-                    let seconds = finishEvent.tRace.truncatingRemainder(dividingBy: 60)
+                    let netTime = sessionData.netTime(for: finishEvent)
+                    let minutes = Int(netTime) / 60
+                    let seconds = netTime.truncatingRemainder(dividingBy: 60)
                     timeString = String(format: "%02d:%06.3f", minutes, seconds)
                 case .dns:
                     timeString = "DNS"

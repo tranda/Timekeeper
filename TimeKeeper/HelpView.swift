@@ -34,7 +34,8 @@ struct HelpView: View {
                             shortcuts: [
                                 ("SPACE", "Record Video", "Most accessible key for critical recording"),
                                 ("ENTER", "Start/Stop Race", "Toggle race timing on/off"),
-                                ("ESC", "Emergency Stop", "Stop both race timing and video recording")
+                                ("ESC", "Emergency Stop", "Stop both race timing and video recording"),
+                                ("1-9", "Start lane (long distance)", "During a long-distance race: that lane's boat has just left")
                             ]
                         )
 
@@ -104,6 +105,18 @@ struct HelpView: View {
                                 "Press SPACE to begin video recording when competitors approach finish line",
                                 "Press ENTER to stop race timing when all competitors have finished",
                                 "Recording automatically stops when race ends"
+                            ]
+                        )
+
+                        WorkflowSection(
+                            title: "Long-Distance Races (over 1000m)",
+                            steps: [
+                                "Races over 1000m load in long-distance mode automatically (Free Races: tick \"Long distance\" in New Race)",
+                                "Press ENTER when the first boat starts — START counts as its start",
+                                "Set the start interval (seconds between boats, saved per event) — a countdown shows which lane is due next",
+                                "As each following boat leaves, tap its lane in Lane Starts or press its lane number",
+                                "Record and mark finishes on the video exactly as for short races",
+                                "Each crew's time is its finish minus its own start; fix a start in the Start column in review"
                             ]
                         )
 

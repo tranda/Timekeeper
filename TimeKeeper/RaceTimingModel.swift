@@ -140,6 +140,8 @@ struct SessionData: Codable {
     var detectionLine: DetectionLine?  // Free-form line for virtual-finish-line motion inspection (Phase A)
     var finishLineTopX: Double?     // Normalized X (0..1) for top endpoint of the photo finish overlay
     var finishLineBottomX: Double?  // Normalized X (0..1) for bottom endpoint of the photo finish overlay
+    var isLongDistance: Bool?  // Long-distance race (>1000m): boats start one by one, each with its own start time
+    var laneStartOffsets: [String: Double]?  // Team name -> seconds from race START to that boat's start (long distance only)
 
     init() {
         self.raceName = "Race"
@@ -150,6 +152,15 @@ struct SessionData: Codable {
         self.recordingStartupDelay = 0
         self.exportedImages = []
         self.selectedImagesForSending = Set<String>()
+    }
+}
+
+extension SessionData {
+    /// Crew's own time: finish on the race clock minus that boat's start offset.
+    /// Equals tRace for normal (mass start) races.
+    func netTime(for event: FinishEvent) -> Double {
+        guard let offset = laneStartOffsets?[event.label] else { return event.tRace }
+        return round((event.tRace - offset) * 1000) / 1000
     }
 }
 
@@ -194,6 +205,35 @@ class RaceTimingModel: ObservableObject {
         }
     }
 
+    var isLongDistance: Bool {
+        sessionData?.isLongDistance ?? false
+    }
+
+    func laneStartOffset(for team: String) -> Double? {
+        sessionData?.laneStartOffsets?[team]
+    }
+
+    func netTime(for event: FinishEvent) -> Double {
+        sessionData?.netTime(for: event) ?? event.tRace
+    }
+
+    /// Live: the boat in this lane has just left the start.
+    func recordLaneStart(_ team: String) {
+        guard isRaceActive, let startTime = raceStartTime else { return }
+        let offset = Date().timeIntervalSince(startTime)
+        setLaneStartOffset(team, round(offset * 1000) / 1000)
+    }
+
+    /// Correct or clear (nil) a boat's start offset. Its finish stays put on the
+    /// race clock, so its net time changes accordingly.
+    func setLaneStartOffset(_ team: String, _ offset: Double?) {
+        if sessionData?.laneStartOffsets == nil {
+            sessionData?.laneStartOffsets = [:]
+        }
+        sessionData?.laneStartOffsets?[team] = offset
+        print(">>> Lane start: \(team) -> \(offset.map { String(format: "%.3f", $0) } ?? "cleared")")
+    }
+
     func startRace() {
         raceStartTime = Date()
         // Don't create new SessionData here - it was already initialized with the race name
@@ -205,6 +245,12 @@ class RaceTimingModel: ObservableObject {
         raceElapsedTime = 0
         finishEvents = []
         sessionData?.finishEvents = []
+        sessionData?.laneStartOffsets = nil
+        // Long distance: START is the first boat's start (lowest lane with a crew);
+        // the rest are tapped as they leave.
+        if isLongDistance, let firstTeam = sessionData?.teamNames.first(where: { !$0.isEmpty }) {
+            sessionData?.laneStartOffsets = [firstTeam: 0]
+        }
 
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.01, repeats: true) { _ in
@@ -285,7 +331,7 @@ class RaceTimingModel: ObservableObject {
         sessionData = SessionData()
     }
 
-    func initializeNewRace(name: String, teamNames: [String], eventId: Int? = nil, raceId: Int? = nil, originalRaceTitle: String? = nil) {
+    func initializeNewRace(name: String, teamNames: [String], eventId: Int? = nil, raceId: Int? = nil, originalRaceTitle: String? = nil, isLongDistance: Bool = false) {
         resetRace()
         // Ensure sessionData exists and set the race name, teams, event ID, and race ID
         if sessionData == nil {
@@ -296,6 +342,7 @@ class RaceTimingModel: ObservableObject {
         sessionData?.eventId = eventId
         sessionData?.raceId = raceId
         sessionData?.originalRaceTitle = originalRaceTitle
+        sessionData?.isLongDistance = isLongDistance ? true : nil
         isRaceInitialized = true
         print("Initialized new race: \(name) with \(teamNames.count) teams, event ID: \(eventId?.description ?? "none"), race ID: \(raceId?.description ?? "none")")
     }

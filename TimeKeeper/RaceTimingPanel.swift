@@ -41,6 +41,9 @@ struct RaceTimingPanel: View {
     @State private var showRefreshConfirm = false
     @State private var showResetConfirm = false
     @State private var showRerunConfirm = false
+    @State private var newRaceIsLongDistance = false
+    @State private var laneStartToOverwrite: String? = nil
+    @State private var startIntervalRevision = 0  // bumps when the per-event start interval is edited
     // Set by REFRESH: the local session whose timing/video data should survive
     // the reload from server (consumed by the next loadSelectedRaceData()).
     @State private var pendingRefreshSnapshot: SessionData? = nil
@@ -516,6 +519,10 @@ struct RaceTimingPanel: View {
                 .frame(maxWidth: .infinity)
             }
 
+            if timingModel.isLongDistance && timingModel.isRaceInitialized && !isReviewMode {
+                laneStartsSection
+            }
+
             Divider()
 
             // Manual Timing Setup for sessions without wallclock data
@@ -570,6 +577,17 @@ struct RaceTimingPanel: View {
                     Text("Race Results")
                         .font(.headline)
 
+                    if timingModel.isLongDistance {
+                        Text("LONG DISTANCE · staggered start")
+                            .font(.caption)
+                            .fontWeight(.bold)
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.teal)
+                            .cornerRadius(4)
+                    }
+
                     if isReviewMode && isViewOnly {
                         Text("(VIEW ONLY - press EDIT to change)")
                             .font(.caption)
@@ -597,6 +615,13 @@ struct RaceTimingPanel: View {
                             .font(.caption)
                             .fontWeight(.semibold)
                             .frame(width: 120, alignment: .leading)
+
+                        if timingModel.isLongDistance {
+                            Text("Start")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .frame(width: 100, alignment: .leading)
+                        }
 
                         Text("Time")
                             .font(.caption)
@@ -834,6 +859,9 @@ struct RaceTimingPanel: View {
                     }
                 }
 
+                Toggle("Long distance (staggered start)", isOn: $newRaceIsLongDistance)
+                    .help("Boats start one by one; each lane gets its own start time and its result is finish − start")
+
                 HStack(spacing: 20) {
                     Button("Cancel") {
                         showNewRaceSheet = false
@@ -844,7 +872,7 @@ struct RaceTimingPanel: View {
                         // Exit review mode when starting a new race
                         isReviewMode = false
 
-                        timingModel.initializeNewRace(name: newRaceName, teamNames: newTeamNames, eventId: racePlanService.selectedEvent?.id)
+                        timingModel.initializeNewRace(name: newRaceName, teamNames: newTeamNames, eventId: racePlanService.selectedEvent?.id, isLongDistance: newRaceIsLongDistance)
                         // Clear the recorded video and reset capture manager state
                         captureManager.lastRecordedURL = nil
                         captureManager.videoStartTime = nil
@@ -986,6 +1014,10 @@ struct RaceTimingPanel: View {
 
         // Race active
         if timingModel.isRaceActive {
+            if timingModel.isLongDistance, let next = nextStartCountdown {
+                let when = next.remaining > 0 ? "in \(formatCountdown(next.remaining))" : "due now"
+                return ("PRESS \(next.lane)", "start \(next.team) \(when)", "⎋ ESC — stop race", "flag.fill", next.remaining > 0 ? Color.green : Color.orange)
+            }
             if captureManager.isRecording {
                 return ("⎵ SPACE", "stop recording", "⎋ ESC — stop race", "record.circle.fill", Color.red)
             } else {
@@ -1017,16 +1049,23 @@ struct RaceTimingPanel: View {
                 .font(.system(size: 14))
                 .frame(width: 120, alignment: .leading)
 
+            if timingModel.isLongDistance {
+                laneStartCell(teamName: teamName)
+            }
+
             Group {
+                // Time column shows the crew's own (net) time; finish markers are
+                // stored on the race clock, so add the boat's start offset back.
+                let startOffset = timingModel.laneStartOffset(for: teamName) ?? 0
                 if isReviewMode && !isViewOnly {
                     EditableTimeField(
-                        time: finishEvent?.tRace,
+                        time: finishEvent.map { timingModel.netTime(for: $0) },
                         onTimeChange: { newTime in
                             if let event = finishEvent {
-                                updateFinishEventTime(event: event, newTime: newTime)
+                                updateFinishEventTime(event: event, newTime: newTime + startOffset)
                             } else {
                                 // Create a new finish event for this lane
-                                createFinishEventForLane(teamName: teamName, time: newTime)
+                                createFinishEventForLane(teamName: teamName, time: newTime + startOffset)
                             }
                         }
                     )
@@ -1034,7 +1073,7 @@ struct RaceTimingPanel: View {
                 } else {
                     // In live mode, show read-only time display
                     if let event = finishEvent, event.status == .finished {
-                        Text(formatRaceTime(event.tRace))
+                        Text(formatRaceTime(timingModel.netTime(for: event)))
                             .font(.system(size: 14, design: .monospaced))
                             .frame(width: 100, alignment: .leading)
                     } else {
@@ -1491,7 +1530,8 @@ struct RaceTimingPanel: View {
             teamNames: previous.teamNames,
             eventId: previous.eventId,
             raceId: previous.raceId,
-            originalRaceTitle: previous.originalRaceTitle
+            originalRaceTitle: previous.originalRaceTitle,
+            isLongDistance: previous.isLongDistance ?? false
         )
         timingModel.sessionData?.finishLineTopX = previous.finishLineTopX
         timingModel.sessionData?.finishLineBottomX = previous.finishLineBottomX
@@ -1549,6 +1589,17 @@ struct RaceTimingPanel: View {
         timingModel.sessionData?.finishLineBottomX = saved.finishLineBottomX
         timingModel.recordingStartupDelay = saved.recordingStartupDelay
 
+        // Server times are net (finish − boat's start); finish markers live on the
+        // race clock, so shift them back by each boat's restored start offset.
+        if let offsets = saved.laneStartOffsets {
+            timingModel.sessionData?.laneStartOffsets = offsets
+            for i in timingModel.finishEvents.indices where timingModel.finishEvents[i].status == .finished {
+                let offset = offsets[timingModel.finishEvents[i].label] ?? 0
+                timingModel.finishEvents[i].tRace += offset
+            }
+            timingModel.sessionData?.finishEvents = timingModel.finishEvents
+        }
+
         timingModel.raceStartTime = saved.raceStartWallclock
         if let raceStart = saved.raceStartWallclock {
             if let raceDuration = saved.raceDuration {
@@ -1589,17 +1640,22 @@ struct RaceTimingPanel: View {
         newRaceName = "\(selectedRace.raceNumber) - \(selectedRace.title)"
 
         // Clear existing team names and populate from race data
-        newTeamNames = (1...AppConfig.shared.maxLanes).map { _ in "" } // Start with empty strings instead of "Lane X"
+        // Long-distance races (>1000m) start boat by boat and may put more crews
+        // on the water than there are lanes, so keep every lane from the plan.
+        let isLongDistance = (distanceMeters(from: selectedRace.title) ?? 0) > 1000
+        let highestLane = selectedRace.lanes.map(\.lane).max() ?? 0
+        let laneCount = isLongDistance ? max(AppConfig.shared.maxLanes, highestLane) : AppConfig.shared.maxLanes
+        newTeamNames = (1...laneCount).map { _ in "" } // Start with empty strings instead of "Lane X"
 
         // Populate team names from race lanes
         for lane in selectedRace.lanes {
-            if lane.lane >= 1 && lane.lane <= AppConfig.shared.maxLanes {
+            if lane.lane >= 1 && lane.lane <= laneCount {
                 newTeamNames[lane.lane - 1] = lane.team
             }
         }
 
         // Initialize the race with the loaded data
-        timingModel.initializeNewRace(name: newRaceName, teamNames: newTeamNames, eventId: racePlanService.selectedEvent?.id, raceId: selectedRace.id, originalRaceTitle: selectedRace.title)
+        timingModel.initializeNewRace(name: newRaceName, teamNames: newTeamNames, eventId: racePlanService.selectedEvent?.id, raceId: selectedRace.id, originalRaceTitle: selectedRace.title, isLongDistance: isLongDistance)
 
         // Clear current video player and look for compatible video with new race name
         playerViewModel.player.replaceCurrentItem(with: nil)
@@ -1653,6 +1709,8 @@ struct RaceTimingPanel: View {
         } else if !isForeignSession {
             loadExistingSessionForRace(raceName: newRaceName)
         }
+        // The race distance decides the start mode, also for sessions saved before it existed
+        timingModel.sessionData?.isLongDistance = isLongDistance ? true : nil
 
         // Only clear video state if no existing session was found
         if timingModel.sessionData?.videoFilePath == nil {
@@ -1664,6 +1722,12 @@ struct RaceTimingPanel: View {
         }
 
         openInViewModeIfRecorded()
+    }
+
+    /// Race distance from a plan title like "SmallSenior A Mixed 1500m".
+    private func distanceMeters(from title: String) -> Int? {
+        guard let match = title.range(of: #"(\d+)\s*m\s*$"#, options: .regularExpression) else { return nil }
+        return Int(title[match].filter(\.isNumber))
     }
 
     // Helper function to parse time string like "00:58.120" to seconds
@@ -1902,21 +1966,187 @@ struct RaceTimingPanel: View {
         return String(format: "%02d:%02d.%03d", minutes, secs, millis)
     }
 
+    // MARK: - Long distance (staggered start)
+
+    /// Lanes that have a crew, in lane order.
+    private var crewLanes: [(lane: Int, team: String)] {
+        (timingModel.sessionData?.teamNames ?? []).enumerated()
+            .filter { !$0.element.isEmpty }
+            .map { (lane: $0.offset + 1, team: $0.element) }
+    }
+
+    /// First crew (by lane) whose boat hasn't been started yet.
+    private var nextLaneToStart: (lane: Int, team: String)? {
+        crewLanes.first { timingModel.laneStartOffset(for: $0.team) == nil }
+    }
+
+    /// Seconds between boats in a long-distance start. Stored per event
+    /// (Free Races share one value); only drives the countdown - starts are tapped.
+    private var startIntervalKey: String {
+        "longDistanceStartInterval." + (timingModel.sessionData?.eventId.map(String.init) ?? "free")
+    }
+
+    private var startInterval: Binding<Int> {
+        Binding(
+            get: {
+                _ = startIntervalRevision
+                let stored = UserDefaults.standard.integer(forKey: startIntervalKey)
+                return stored > 0 ? stored : 30
+            },
+            set: { newValue in
+                UserDefaults.standard.set(max(1, newValue), forKey: startIntervalKey)
+                startIntervalRevision += 1
+            }
+        )
+    }
+
+    /// Planned start of a crew (seconds after START): its place in lane order × interval.
+    private func plannedStart(forLane lane: Int) -> Double? {
+        guard let order = crewLanes.firstIndex(where: { $0.lane == lane }) else { return nil }
+        return Double(order * startInterval.wrappedValue)
+    }
+
+    /// Countdown to the next boat's planned start; negative once it is due.
+    private var nextStartCountdown: (lane: Int, team: String, remaining: Double)? {
+        guard timingModel.isRaceActive, let next = nextLaneToStart,
+              let planned = plannedStart(forLane: next.lane) else { return nil }
+        return (next.lane, next.team, planned - timingModel.raceElapsedTime)
+    }
+
+    private func formatCountdown(_ seconds: Double) -> String {
+        let total = Int(abs(seconds).rounded(.up))
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    /// Live: start a lane's boat now; asks before overwriting an existing start.
+    private func startLane(number: Int) {
+        guard timingModel.isRaceActive, timingModel.isLongDistance,
+              let crew = crewLanes.first(where: { $0.lane == number }) else { return }
+        if timingModel.laneStartOffset(for: crew.team) != nil {
+            laneStartToOverwrite = crew.team
+        } else {
+            timingModel.recordLaneStart(crew.team)
+            markAsUnsaved()
+        }
+    }
+
+    private var laneStartsSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text("Lane Starts — tap (or press the lane number) as each boat leaves")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Spacer()
+
+                Text("Interval")
+                    .font(.caption)
+                TextField("", value: startInterval, format: .number)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 44)
+                    .multilineTextAlignment(.trailing)
+                Stepper("", value: startInterval, in: 1...600, step: 5)
+                    .labelsHidden()
+                Text("s")
+                    .font(.caption)
+            }
+            // Locked during the race so the field can't keep keyboard focus and
+            // swallow the lane-number start keys.
+            .disabled(timingModel.isRaceActive)
+            .help("Seconds between boats for this event; drives the countdown to the next start")
+
+            if let countdown = nextStartCountdown {
+                let isDue = countdown.remaining <= 0
+                Text(isDue
+                     ? "Lane \(countdown.lane) · \(countdown.team) — due, \(formatCountdown(countdown.remaining)) late"
+                     : "Next: lane \(countdown.lane) · \(countdown.team) in \(formatCountdown(countdown.remaining))")
+                    .font(.system(size: 18, weight: .bold, design: .monospaced))
+                    .foregroundColor(isDue ? .orange : .primary)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], spacing: 8) {
+                ForEach(crewLanes, id: \.lane) { crew in
+                    let offset = timingModel.laneStartOffset(for: crew.team)
+                    Button(action: { startLane(number: crew.lane) }) {
+                        VStack(spacing: 2) {
+                            Text("\(crew.lane)")
+                                .font(.system(size: 20, weight: .bold))
+                            Text(crew.team)
+                                .font(.system(size: 11))
+                                .lineLimit(1)
+                            Text(offset.map { "+" + formatRaceTime($0) }
+                                 ?? plannedStart(forLane: crew.lane).map { "due +" + formatCountdown($0) }
+                                 ?? "not started")
+                                .font(.system(size: 11, design: .monospaced))
+                        }
+                        .foregroundColor(offset != nil ? .white : .primary)
+                        .frame(maxWidth: .infinity, minHeight: 60)
+                        .background(offset != nil ? Color.green : Color.gray.opacity(0.15))
+                        .cornerRadius(8)
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!timingModel.isRaceActive)
+                }
+            }
+        }
+        .alert("Restart this boat?", isPresented: Binding(
+            get: { laneStartToOverwrite != nil },
+            set: { if !$0 { laneStartToOverwrite = nil } }
+        )) {
+            Button("Set start to now", role: .destructive) {
+                if let team = laneStartToOverwrite {
+                    timingModel.recordLaneStart(team)
+                    markAsUnsaved()
+                }
+                laneStartToOverwrite = nil
+            }
+            Button("Cancel", role: .cancel) { laneStartToOverwrite = nil }
+        } message: {
+            Text("\(laneStartToOverwrite ?? "") already has a start time.")
+        }
+    }
+
+    /// Results table: the boat's start (seconds after race START), editable in review.
+    @ViewBuilder
+    private func laneStartCell(teamName: String) -> some View {
+        let offset = timingModel.laneStartOffset(for: teamName)
+        if isReviewMode && !isViewOnly && !teamName.isEmpty {
+            EditableTimeField(
+                time: offset,
+                onTimeChange: { newOffset in
+                    timingModel.setLaneStartOffset(teamName, newOffset)
+                    markAsUnsaved()
+                    onTimelineDataChanged()
+                }
+            )
+            .frame(width: 100, alignment: .leading)
+        } else if let offset {
+            Text("+" + formatRaceTime(offset))
+                .font(.system(size: 14, design: .monospaced))
+                .frame(width: 100, alignment: .leading)
+        } else {
+            Text("--:--")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .frame(width: 100, alignment: .leading)
+        }
+    }
+
     private func calculatePosition(for event: FinishEvent, in events: [FinishEvent]) -> Int? {
         // Only calculate position for finished events
         let finishedEvents = events.filter { $0.status == .finished }
-        let sortedEvents = finishedEvents.sorted { $0.tRace < $1.tRace }
+        let sortedEvents = finishedEvents.sorted { timingModel.netTime(for: $0) < timingModel.netTime(for: $1) }
 
         guard let targetEvent = sortedEvents.first(where: { $0.id == event.id }) else {
             return nil
         }
 
         // Times are already rounded when recorded, so no need to round again for comparison
-        let targetTime = targetEvent.tRace
+        let targetTime = timingModel.netTime(for: targetEvent)
 
         // Find position by counting crews with better (faster) times
         // Crews with identical times share the same position
-        let betterTimes = sortedEvents.filter { $0.tRace < targetTime }
+        let betterTimes = sortedEvents.filter { timingModel.netTime(for: $0) < targetTime }
         let position = betterTimes.count + 1
 
         return position
@@ -2208,6 +2438,7 @@ struct RaceTimingPanel: View {
 
         // Update newTeamNames array to match current maxLanes setting
         newTeamNames = (1...AppConfig.shared.maxLanes).map { "Lane \($0)" }
+        newRaceIsLongDistance = false
 
         showNewRaceSheet = true
     }

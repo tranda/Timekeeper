@@ -735,6 +735,14 @@ struct ContentView: View {
             break
         }
 
+        // Long distance: digit keys 1-9 start that lane's boat
+        if let lane = Int(characters), (1...9).contains(lane),
+           modifierFlags.intersection([.command, .option, .control]).isEmpty,
+           timingModel.isRaceActive, timingModel.isLongDistance, !isTextFieldEditing() {
+            handleLaneStartShortcut(lane)
+            return nil
+        }
+
         // Handle character-based shortcuts
         switch characters {
         case "m":
@@ -831,6 +839,20 @@ struct ContentView: View {
 
         // Start race (only if race hasn't started yet)
         timingModel.startRace()
+    }
+
+    private func handleLaneStartShortcut(_ lane: Int) {
+        guard let teamNames = timingModel.sessionData?.teamNames,
+              lane <= teamNames.count, !teamNames[lane - 1].isEmpty else { return }
+        let team = teamNames[lane - 1]
+        // Re-starting a boat that already has a start goes through the panel's
+        // confirm button, so a stray key press can't overwrite it.
+        guard timingModel.laneStartOffset(for: team) == nil else {
+            print("⌨️ Lane \(lane) already started - ignoring key")
+            return
+        }
+        timingModel.recordLaneStart(team)
+        markTimelineDataAsUnsaved()
     }
 
     private func handleEmergencyStopShortcut() {
