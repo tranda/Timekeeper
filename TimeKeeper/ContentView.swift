@@ -689,6 +689,13 @@ struct ContentView: View {
             print("⌨️ ArrowKey monitor: code=\(keyCode) firstResponder=\(frClass) isTextFieldEditing=\(isTextFieldEditing())")
         }
 
+        // Typing in a text field (race name, team names, times): letters, space
+        // and Home/End belong to the field, not to shortcuts. ⌘-shortcuts still
+        // work, and SPACE keeps controlling recording while a race is running.
+        if isTextFieldEditing() && !modifierFlags.contains(.command) && !(keyCode == 49 && timingModel.isRaceActive) {
+            return event
+        }
+
         // Handle special keys first
         switch keyCode {
         case 49: // SPACE
