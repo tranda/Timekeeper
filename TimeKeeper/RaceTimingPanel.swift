@@ -40,6 +40,7 @@ struct RaceTimingPanel: View {
     @State private var resultsAlertIsSuccess = false
     @State private var showRefreshConfirm = false
     @State private var showResetConfirm = false
+    @State private var showRerunConfirm = false
     // Set by REFRESH: the local session whose timing/video data should survive
     // the reload from server (consumed by the next loadSelectedRaceData()).
     @State private var pendingRefreshSnapshot: SessionData? = nil
@@ -433,6 +434,24 @@ struct RaceTimingPanel: View {
                         .font(.system(size: 24, weight: .bold, design: .monospaced))
                         .frame(minWidth: 120)
 
+                    if canRerunRace {
+                        Button(action: { showRerunConfirm = true }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .font(.system(size: 12, weight: .bold))
+                                Text("RE-RUN")
+                                    .font(.system(size: 12, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .frame(height: 30)
+                            .padding(.horizontal, 12)
+                            .background(Color.purple)
+                            .cornerRadius(8)
+                        }
+                        .buttonStyle(.plain)
+                        .help("Run and record this race again (previous run's session goes to the Trash)")
+                    }
+
                     if timingModel.isRaceActive {
                         HStack {
                             Circle()
@@ -771,6 +790,12 @@ struct RaceTimingPanel: View {
             Button("Refresh") { refreshCurrentRaceFromServer() }
         } message: {
             Text("Lanes, seeds and results for this race are replaced with the server's. Timing sync, video, finish line and exported photos are kept. Local times that haven't been sent will be replaced.")
+        }
+        .alert("Run this race again?", isPresented: $showRerunConfirm) {
+            Button("Cancel", role: .cancel) { }
+            Button("Re-run", role: .destructive) { rerunCurrentRace() }
+        } message: {
+            Text("The previous run's times and timing are cleared and its session file is moved to the Trash. Lanes, crews and the finish-line position are kept. Previous videos and photos stay in the race folder. Results already sent to the server stay there until you send the new ones.")
         }
         .alert("Reset this race?", isPresented: $showResetConfirm) {
             Button("Cancel", role: .cancel) { }
@@ -1442,6 +1467,46 @@ struct RaceTimingPanel: View {
         isReviewMode = false
         timingModel.resetRace()
         reloadSelectedRaceFromServer()
+    }
+
+    /// A loaded race that has already been run or recorded (and isn't running now).
+    private var canRerunRace: Bool {
+        timingModel.isRaceInitialized && !timingModel.isRaceActive && !captureManager.isRecording &&
+            (timingModel.raceStartTime != nil || captureManager.lastRecordedURL != nil)
+    }
+
+    /// Clear the previous run of the current race so it can be started and
+    /// recorded again. Keeps lanes/crews and the finish-line position.
+    private func rerunCurrentRace() {
+        guard let previous = timingModel.sessionData else { return }
+        let raceName = previous.raceName
+
+        let directory = previous.eventId == nil
+            ? AppConfig.shared.getFreeRacesDirectory()
+            : AppConfig.shared.getEventRacesDirectory()
+        moveSessionFileToTrash(directory.appendingPathComponent("\(raceName).json"))
+
+        timingModel.initializeNewRace(
+            name: raceName,
+            teamNames: previous.teamNames,
+            eventId: previous.eventId,
+            raceId: previous.raceId,
+            originalRaceTitle: previous.originalRaceTitle
+        )
+        timingModel.sessionData?.finishLineTopX = previous.finishLineTopX
+        timingModel.sessionData?.finishLineBottomX = previous.finishLineBottomX
+        timingModel.sessionData?.detectionLine = previous.detectionLine
+
+        captureManager.lastRecordedURL = nil
+        captureManager.videoStartTime = nil
+        captureManager.videoStopTime = nil
+        playerViewModel.player.replaceCurrentItem(with: nil)
+        playerViewModel.isSeekingOutsideVideo = false
+
+        isReviewMode = false
+        isViewOnly = false
+        hasUnsavedChanges = false
+        print("🔁 RE-RUN: cleared previous run of '\(raceName)' - ready to start again")
     }
 
     private func reloadSelectedRaceFromServer() {
