@@ -478,6 +478,10 @@ struct RaceTimelineView: View {
         // stay stuck at the last slider value while the displayed frame moves.
         // Skip the sync while the user is actively dragging the timeline slider
         // so we don't fight the drag's own writes.
+        // Put the play marker on the video's first frame when the timeline
+        // opens or a different race/video is loaded.
+        .onAppear { moveToVideoStart() }
+        .onChange(of: loadedVideoIdentity) { _ in moveToVideoStart() }
         .onChange(of: playerViewModel.currentTime) { videoTime in
             if isDragging { return }
             let synced = max(0, min(raceEndTime, videoTime + videoStartInRace))
@@ -485,6 +489,18 @@ struct RaceTimelineView: View {
                 currentRaceTime = synced
             }
         }
+    }
+
+    /// Changes whenever a different race or video file is loaded.
+    private var loadedVideoIdentity: String {
+        "\(timingModel.sessionData?.raceName ?? "")|\(captureManager.lastRecordedURL?.path ?? "")"
+    }
+
+    private func moveToVideoStart() {
+        guard captureManager.lastRecordedURL != nil else { return }
+        // Video starting before the race start (negative offset) → race time 0
+        currentRaceTime = min(max(0, videoStartInRace), raceEndTime)
+        seekToRaceTime()
     }
 
     private func seekToRaceTime() {
