@@ -23,6 +23,7 @@ struct RaceTimingPanel: View {
     @ObservedObject var playerViewModel: PlayerViewModel
     @Binding var isReviewMode: Bool
     @Binding var onTimelineDataChanged: () -> Void
+    @Binding var stopRaceAction: () -> Void
     @StateObject private var racePlanService = RacePlanService.shared
     @State private var showLaneInput = false
     @State private var selectedLane = "1"
@@ -767,6 +768,10 @@ struct RaceTimingPanel: View {
         } message: {
             Text(resultsAlertMessage)
         }
+        .onReceive(timingModel.$lastSessionSave.dropFirst()) { _ in
+            // Any successful save (SAVE button, Cmd+S, auto-save) clears the flag
+            hasUnsavedChanges = false
+        }
         .onReceive(racePlanService.$shouldRefreshRaceData) { shouldRefresh in
             if shouldRefresh && racePlanService.selectedRace != nil {
                 // Check for unsaved changes before switching races
@@ -883,6 +888,8 @@ struct RaceTimingPanel: View {
         .onAppear {
             // Set up the callback for timeline data changes
             onTimelineDataChanged = markAsUnsaved
+            // ESC (handled in ContentView) stops the race through the same path
+            stopRaceAction = handleStopPress
 
             // Auto-initialize on first appear
             if racePlanService.selectedEvent == nil {
@@ -1680,10 +1687,6 @@ struct RaceTimingPanel: View {
                     print("🟠 Video saved for review: \(videoURL.path)")
                     // Save video path to session data for review mode
                     timingModel.sessionData?.videoFilePath = videoURL.path
-                    // Mark as unsaved when video is saved
-                    print("🟠 Calling markAsUnsaved() after video saved")
-                    self.markAsUnsaved()
-                    // Session will be saved manually via Save button
                 }
 
                 // Auto-switch to Review mode after stopping race
@@ -1691,6 +1694,7 @@ struct RaceTimingPanel: View {
                     print("🎬 Auto-switching to Review mode after race stop")
                     self.isReviewMode = true
                     self.loadVideoForReview()
+                    self.autoSaveSession(reason: "race stopped")
                 }
             }
         } else {
@@ -1698,6 +1702,7 @@ struct RaceTimingPanel: View {
             print("🎬 Auto-switching to Review mode after race stop (no recording)")
             isReviewMode = true
             loadVideoForReview()
+            autoSaveSession(reason: "race stopped")
         }
     }
 
@@ -1767,6 +1772,9 @@ struct RaceTimingPanel: View {
 
     private func handleResultsResponse(result: Result<String, Error>) {
         DispatchQueue.main.async {
+            // Keep the local session whether or not the upload succeeded
+            self.autoSaveSession(reason: "results sent")
+
             switch result {
             case .success(let message):
                 print("✅ SUCCESS: \(message)")
@@ -2022,6 +2030,14 @@ struct RaceTimingPanel: View {
     }
 
     // MARK: - Save/Confirmation System
+
+    /// Save without user action at key moments (race stop, results sent) so a
+    /// race's session can't be lost by forgetting SAVE.
+    private func autoSaveSession(reason: String) {
+        guard timingModel.isRaceInitialized else { return }
+        print("💾 Auto-saving session (\(reason))")
+        saveCurrentRaceData()
+    }
 
     private func saveCurrentRaceData() {
         print("💾 Saving current race data...")

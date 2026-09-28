@@ -54,6 +54,7 @@ struct ContentView: View {
     @State private var triggerLaneSelection = false
     @State private var isReviewMode = false
     @State private var markTimelineDataAsUnsaved: () -> Void = {}
+    @State private var stopRaceAction: () -> Void = {}  // set by RaceTimingPanel (same as its STOP button)
 
     // Virtual finish line — Phase A motion inspection
     @State private var motionOverlayImage: CGImage? = nil
@@ -70,7 +71,7 @@ struct ContentView: View {
         HStack(spacing: 0) {
             // Left side - Controls
             VStack(alignment: .leading, spacing: 0) {
-                RaceTimingPanel(timingModel: timingModel, captureManager: captureManager, playerViewModel: playerViewModel, isReviewMode: $isReviewMode, onTimelineDataChanged: $markTimelineDataAsUnsaved)
+                RaceTimingPanel(timingModel: timingModel, captureManager: captureManager, playerViewModel: playerViewModel, isReviewMode: $isReviewMode, onTimelineDataChanged: $markTimelineDataAsUnsaved, stopRaceAction: $stopRaceAction)
             }
             .frame(minWidth: 600, idealWidth: 700, maxWidth: 800)
             .padding(.horizontal)
@@ -830,29 +831,9 @@ struct ContentView: View {
         guard timingModel.isRaceActive,
               !isReviewMode else { return }
 
-        // Emergency stop - stop both race and recording immediately
-        timingModel.stopRace()
-        if captureManager.isRecording {
-            captureManager.stopRecording { url in
-                print("Stopped race and recording via ESC key")
-                // Save video path if available
-                if let videoURL = url {
-                    timingModel.sessionData?.videoFilePath = videoURL.path
-                    // Mark as unsaved when video is saved
-                    self.markTimelineDataAsUnsaved()
-                }
-
-                // Auto-switch to Review mode after stopping race
-                DispatchQueue.main.async {
-                    print("🎬 Auto-switching to Review mode after ESC stop")
-                    self.isReviewMode = true
-                }
-            }
-        } else {
-            // No recording was active, still switch to review mode
-            print("🎬 Auto-switching to Review mode after ESC stop (no recording)")
-            isReviewMode = true
-        }
+        // Same path as the STOP button: stop race + recording, review mode, auto-save
+        print("⎋ ESC pressed - stopping race")
+        stopRaceAction()
     }
 
     private enum TimelineDirection {

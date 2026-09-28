@@ -164,6 +164,9 @@ class RaceTimingModel: ObservableObject {
     @Published var sessionData: SessionData? = SessionData()
     @Published var isRaceInitialized = false
     @Published var recordingStartupDelay: Double = 0  // Actual delay between record click and video start
+    /// Set after every successful saveCurrentSession(), so views can clear
+    /// their unsaved-changes state however the save was triggered.
+    @Published private(set) var lastSessionSave: Date?
 
     private var timer: Timer?
     var outputDirectory: URL?
@@ -399,7 +402,8 @@ class RaceTimingModel: ObservableObject {
         }
     }
 
-    func saveSession(to url: URL) {
+    @discardableResult
+    func saveSession(to url: URL) -> Bool {
         sessionData?.finishEvents = finishEvents
         sessionData?.recordingStartupDelay = recordingStartupDelay
 
@@ -419,14 +423,16 @@ class RaceTimingModel: ObservableObject {
 
         guard let session = sessionData else {
             print("❌ No session data to save")
-            return
+            return false
         }
         do {
             let data = try encoder.encode(session)
             try data.write(to: url)
             print("💾 Session saved successfully to: \(url.path)")
+            return true
         } catch {
             print("❌ Failed to encode/save session to \(url.path): \(error)")
+            return false
         }
     }
 
@@ -497,8 +503,9 @@ class RaceTimingModel: ObservableObject {
         let raceName = sessionData?.raceName ?? "Race"
         let sessionFileName = "\(raceName).json"
         let sessionURL = saveDirectory.appendingPathComponent(sessionFileName)
-        saveSession(to: sessionURL)
-        print("Session saved to: \(sessionURL.path)")
+        if saveSession(to: sessionURL) {
+            lastSessionSave = Date()
+        }
     }
 
     func readAndStoreVideoDuration(from videoPath: String) {
