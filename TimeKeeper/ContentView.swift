@@ -53,6 +53,8 @@ struct ContentView: View {
     @State private var keyMonitor: Any? = nil
     @State private var triggerLaneSelection = false
     @State private var isReviewMode = false
+    /// Review with editing locked — an existing race opens this way; EDIT unlocks it
+    @State private var isViewOnly = false
     @State private var markTimelineDataAsUnsaved: () -> Void = {}
     @State private var stopRaceAction: () -> Void = {}  // set by RaceTimingPanel (same as its STOP button)
 
@@ -71,7 +73,7 @@ struct ContentView: View {
         HStack(spacing: 0) {
             // Left side - Controls
             VStack(alignment: .leading, spacing: 0) {
-                RaceTimingPanel(timingModel: timingModel, captureManager: captureManager, playerViewModel: playerViewModel, isReviewMode: $isReviewMode, onTimelineDataChanged: $markTimelineDataAsUnsaved, stopRaceAction: $stopRaceAction)
+                RaceTimingPanel(timingModel: timingModel, captureManager: captureManager, playerViewModel: playerViewModel, isReviewMode: $isReviewMode, isViewOnly: $isViewOnly, onTimelineDataChanged: $markTimelineDataAsUnsaved, stopRaceAction: $stopRaceAction)
             }
             .frame(minWidth: 600, idealWidth: 700, maxWidth: 800)
             .padding(.horizontal)
@@ -264,6 +266,7 @@ struct ContentView: View {
                                                     // Photo finish overlay positioned relative to video player
                                                     if playerViewModel.showPhotoFinishOverlay {
                                                         FinishLineOverlay(playerViewModel: playerViewModel)
+                                                            .allowsHitTesting(!isViewOnly)
                                                     }
 
                                                     // Virtual finish line — motion overlay (transparent CGImage above the video)
@@ -439,6 +442,7 @@ struct ContentView: View {
                         captureManager: captureManager,
                         playerViewModel: playerViewModel,
                         triggerLaneSelection: $triggerLaneSelection,
+                        isViewOnly: isViewOnly,
                         onDataChanged: markTimelineDataAsUnsaved
                     )
                     .frame(height: playerViewModel.motionSweepRows.isEmpty ? 300 : 350)
@@ -450,6 +454,10 @@ struct ContentView: View {
             .frame(maxWidth: .infinity)
         }
         .frame(minWidth: 1000, minHeight: 600)
+        .onChange(of: isReviewMode) { reviewing in
+            // Leaving review (LIVE, race change) always drops the edit lock
+            if !reviewing { isViewOnly = false }
+        }
         .alert("Export Complete", isPresented: $showExportSuccess) {
             Button("OK") { }
         } message: {
@@ -932,7 +940,8 @@ struct ContentView: View {
 
     private func handleOpenLaneSelectionShortcut() {
         // Only work when race is completed (not active, has started, and has been stopped)
-        guard !timingModel.isRaceActive,
+        guard !isViewOnly,
+              !timingModel.isRaceActive,
               timingModel.raceStartTime != nil else { return }
 
         // Trigger the lane selection dialog in RaceTimelineView
@@ -961,7 +970,8 @@ struct ContentView: View {
 
     private func handleExportShortcut() {
         // Only export when race is completed and we have a frame to export
-        guard !timingModel.isRaceActive,
+        guard !isViewOnly,
+              !timingModel.isRaceActive,
               timingModel.raceStartTime != nil,
               captureManager.lastRecordedURL != nil,
               playerViewModel.player.currentItem != nil else { return }

@@ -22,6 +22,7 @@ struct RaceTimingPanel: View {
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var playerViewModel: PlayerViewModel
     @Binding var isReviewMode: Bool
+    @Binding var isViewOnly: Bool
     @Binding var onTimelineDataChanged: () -> Void
     @Binding var stopRaceAction: () -> Void
     @StateObject private var racePlanService = RacePlanService.shared
@@ -192,25 +193,9 @@ struct RaceTimingPanel: View {
 
                         // Only show Review/Save buttons if a race is actually initialized
                         if timingModel.isRaceInitialized {
-                        Button(action: {
-                            isReviewMode.toggle()
+                        reviewModeButtons
 
-                            // When entering review mode, load the video if available
-                            if isReviewMode {
-                                loadVideoForReview()
-                            }
-                        }) {
-                            Text(isReviewMode ? "LIVE" : "REVIEW")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 80, height: 35)
-                                .background(isReviewMode ? Color.orange : Color.green)
-                                .cornerRadius(8)
-                        }
-                        .buttonStyle(.plain)
-                        .help(isReviewMode ? "Switch to live race mode" : "Switch to review mode for editing times")
-
-                        if isReviewMode {
+                        if isReviewMode && !isViewOnly {
                             Button(action: {
                                 showVideoFileSelector()
                             }) {
@@ -304,23 +289,7 @@ struct RaceTimingPanel: View {
                         .frame(width: 400)
                         .disabled(timingModel.isRaceActive)
 
-                        Button(action: {
-                            isReviewMode.toggle()
-
-                            // When entering review mode, load the video if available
-                            if isReviewMode {
-                                loadVideoForReview()
-                            }
-                        }) {
-                            Text(isReviewMode ? "LIVE" : "REVIEW")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(.white)
-                                .frame(width: 80, height: 35)
-                                .background(isReviewMode ? Color.orange : Color.green)
-                                .cornerRadius(8)
-                        }
-                        .buttonStyle(.plain)
-                        .help(isReviewMode ? "Switch to live race mode" : "Switch to review mode for editing times")
+                        reviewModeButtons
 
                         Button(action: {
                             showRefreshConfirm = true
@@ -360,7 +329,7 @@ struct RaceTimingPanel: View {
                         .disabled(timingModel.isRaceActive)
                         .help("Move this race's saved session to the Trash and start over from server data")
 
-                        if isReviewMode {
+                        if isReviewMode && !isViewOnly {
                             Button(action: {
                                 showVideoFileSelector()
                             }) {
@@ -531,7 +500,7 @@ struct RaceTimingPanel: View {
             Divider()
 
             // Manual Timing Setup for sessions without wallclock data
-            if shouldShowManualTimingSetup {
+            if shouldShowManualTimingSetup && !isViewOnly {
                 manualTimingSetupSection
                 Divider()
             }
@@ -582,7 +551,12 @@ struct RaceTimingPanel: View {
                     Text("Race Results")
                         .font(.headline)
 
-                    if isReviewMode {
+                    if isReviewMode && isViewOnly {
+                        Text("(VIEW ONLY - press EDIT to change)")
+                            .font(.caption)
+                            .foregroundColor(.blue)
+                            .fontWeight(.medium)
+                    } else if isReviewMode {
                         Text("(REVIEW MODE - Times Editable)")
                             .font(.caption)
                             .foregroundColor(.orange)
@@ -650,6 +624,7 @@ struct RaceTimingPanel: View {
                 // Exported Images Selection
                 if timingModel.isRaceInitialized && !(timingModel.sessionData?.exportedImages.isEmpty ?? true) {
                     exportedImagesSection
+                        .disabled(isViewOnly)
                 }
 
                 // Send Results button (only show if race is initialized and has an event)
@@ -666,6 +641,9 @@ struct RaceTimingPanel: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .disabled(isViewOnly)
+                    .opacity(isViewOnly ? 0.5 : 1.0)
+                    .help(isViewOnly ? "Press EDIT to send results" : "Send results to the server")
                     .padding(.horizontal)
                 }
             }
@@ -969,6 +947,9 @@ struct RaceTimingPanel: View {
 
     private func getCenteredHint() -> (primaryMessage: String, secondaryMessage: String?, tertiaryMessage: String?, icon: String, color: Color) {
         // Review mode
+        if isReviewMode && isViewOnly {
+            return ("VIEW ONLY", "EDIT to change", nil, "eye.fill", Color.blue)
+        }
         if isReviewMode {
             return ("REVIEW MODE", "M to mark", nil, "film.fill", Color.purple)
         }
@@ -1012,7 +993,7 @@ struct RaceTimingPanel: View {
                 .frame(width: 120, alignment: .leading)
 
             Group {
-                if isReviewMode {
+                if isReviewMode && !isViewOnly {
                     EditableTimeField(
                         time: finishEvent?.tRace,
                         onTimeChange: { newTime in
@@ -1041,6 +1022,7 @@ struct RaceTimingPanel: View {
             }
 
             statusMenu(for: teamName, finishEvent: finishEvent)
+                .disabled(isViewOnly)
 
             positionText(for: finishEvent, position: position)
 
@@ -1182,6 +1164,53 @@ struct RaceTimingPanel: View {
 
         // Mark as unsaved
         markAsUnsaved()
+    }
+
+    /// LIVE/REVIEW toggle, plus EDIT while an existing race is open read-only.
+    @ViewBuilder
+    private var reviewModeButtons: some View {
+        if isReviewMode && isViewOnly {
+            Button(action: {
+                isViewOnly = false
+                print("✏️ EDIT pressed - editing unlocked")
+            }) {
+                Text("EDIT")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 80, height: 35)
+                    .background(Color.blue)
+                    .cornerRadius(8)
+            }
+            .buttonStyle(.plain)
+            .help("Unlock editing of times, markers, timing and finish line")
+        }
+
+        Button(action: {
+            isReviewMode.toggle()
+            isViewOnly = false
+
+            // When entering review mode, load the video if available
+            if isReviewMode {
+                loadVideoForReview()
+            }
+        }) {
+            Text(isReviewMode ? "LIVE" : "REVIEW")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 80, height: 35)
+                .background(isReviewMode ? Color.orange : Color.green)
+                .cornerRadius(8)
+        }
+        .buttonStyle(.plain)
+        .help(isReviewMode ? "Switch to live race mode" : "Switch to review mode for editing times")
+    }
+
+    /// An existing race (one with a recorded video) opens in review, read-only.
+    private func openInViewModeIfRecorded() {
+        guard captureManager.lastRecordedURL != nil, !timingModel.isRaceActive else { return }
+        isReviewMode = true
+        isViewOnly = true
+        print("👁️ Opened existing race read-only (press EDIT to change)")
     }
 
     private func loadVideoForReview() {
@@ -1568,6 +1597,8 @@ struct RaceTimingPanel: View {
             playerViewModel.player.replaceCurrentItem(with: nil)
             playerViewModel.isSeekingOutsideVideo = false
         }
+
+        openInViewModeIfRecorded()
     }
 
     // Helper function to parse time string like "00:58.120" to seconds
@@ -2210,6 +2241,8 @@ struct RaceTimingPanel: View {
 
         // Clear unsaved changes flag
         hasUnsavedChanges = false
+
+        openInViewModeIfRecorded()
 
         print("✅ Free race loaded: \(raceName)")
         print("✅ Final isRaceInitialized: \(timingModel.isRaceInitialized)")

@@ -6,6 +6,8 @@ struct RaceTimelineView: View {
     @ObservedObject var captureManager: CaptureManager
     @ObservedObject var playerViewModel: PlayerViewModel
     @Binding var triggerLaneSelection: Bool
+    /// Existing race opened read-only: scrubbing/navigation only, no editing
+    var isViewOnly: Bool = false
     var onDataChanged: () -> Void = {}
 
     @State private var currentRaceTime: Double = 0
@@ -105,8 +107,9 @@ struct RaceTimelineView: View {
                 }
             }
 
-            // Timing Adjustment Controls
+            // Timing Adjustment Controls (visible but locked in view-only)
             timingAdjustmentSection
+                .disabled(isViewOnly)
 
             // Motion-energy bar graph aligned to race-time space (above the timeline).
             // Only renders if a sweep has been run.
@@ -162,6 +165,7 @@ struct RaceTimelineView: View {
                                     onDataChanged()
                                 }
                             )
+                            .allowsHitTesting(!isViewOnly)
                         }
                     }
 
@@ -297,6 +301,7 @@ struct RaceTimelineView: View {
 
             // Quick Actions
             HStack(spacing: 20) {
+                if !isViewOnly {
                 Button("Set Marker (M)") {
                     // Simply use the current slider position (currentRaceTime)
                     // This is what the user has positioned on the timeline
@@ -316,6 +321,7 @@ struct RaceTimelineView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(.green)
+                }
 
                 if !timingModel.finishEvents.isEmpty {
                     Menu("Jump to marker") {
@@ -332,7 +338,7 @@ struct RaceTimelineView: View {
                 Spacer()
 
                 // Export Image button in the center
-                if isVideoAvailable && captureManager.lastRecordedURL != nil {
+                if isVideoAvailable && captureManager.lastRecordedURL != nil && !isViewOnly {
                     Button("EXPORT IMAGE") {
                         exportCurrentFrame()
                     }
