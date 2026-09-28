@@ -110,6 +110,9 @@ struct RaceTimelineView: View {
             // Timing Adjustment Controls (visible but locked in view-only)
             timingAdjustmentSection
                 .disabled(isViewOnly)
+                // Fresh fields per race, so a draft/focus from the previous race
+                // can't linger (or be committed into this one)
+                .id(timingModel.sessionData?.raceName ?? "")
 
             // Motion-energy bar graph aligned to race-time space (above the timeline).
             // Only renders if a sweep has been run.

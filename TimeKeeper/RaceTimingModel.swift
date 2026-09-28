@@ -450,6 +450,8 @@ class RaceTimingModel: ObservableObject {
         let apply = {
             self.sessionData = loadedSession
             self.raceStartTime = loadedSession.raceStartWallclock
+            // Don't inherit the previously loaded race's stop time
+            self.raceStopTime = loadedSession.videoStopWallclock
             self.finishEvents = loadedSession.finishEvents
             self.recordingStartupDelay = loadedSession.recordingStartupDelay
             self.isRaceActive = false
